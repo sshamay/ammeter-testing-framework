@@ -1,20 +1,33 @@
 # Test Strategy & Plan — Ammeter Measurement System
 
-Status: **draft v0.3 — for review**
+Status: **draft v0.4 — for review**
 Source requirements: `Exam/ammeter-test-specification.md`, `README.md`, `config/config.yaml`,
 existing code in `Ammeters/`, `src/`.
 Related: `docs/test_framework_README.md` (fix log), `methodology/00-preflight-checklist.md` (gates).
 
 ## Changelog
 
+**v0.4** — change authority: what we are allowed to change in the SUT
+
+- Added §0.1 "Change authority" and the §18 SUT policy, derived from the spec's wording
+  ("use existing ammeter emulation infrastructure — if you get an error in the code, please fix it")
+  and from the contract the README documents.
+- §6.2.2 and §6.2.3 rewritten: the formula oracle and golden values now use `patch(..., wraps=)` and
+  `side_effect` in-process. No constructor seam, no `Measurement` return type in the emulator, no
+  log parsing.
+- §9: a stalled client is handled with client-side timeouts; the server's blocking `recv` is recorded as
+  a limitation of the provided infrastructure rather than fixed.
+- §13 reclassified into allowed fixes, framework-side workarounds, and withdrawn items.
+- §19 Q1 updated: a reference mode would be a SUT change and conflicts with §18.
+
 **v0.3** — added §6.2 "Testing nondeterministic output":
 
-- The oracle ladder for random devices: provable bounds, formula oracle, seeded golden values,
+- The oracle ladder for random devices: provable bounds, formula oracle, golden values,
   distribution tests, metamorphic statistics, mutation controls.
 - Derived (not guessed) figures: provable output ranges per ammeter, analytic means, coefficients of
   variation, and the sample size each oracle needs to be stable.
-- Records that seeded testing is **blocked today** by the global RNG reseed (F6), and which planted
-  defect each technique does and does not catch.
+- Records that seeded testing is **blocked today** by the global RNG reseed (reclassified in §13.2), and
+  which planted defect each technique does and does not catch.
 - Notes the CIRCUTOR unit-scale inconsistency as independent evidence for the §6.1 precision-only framing.
 
 **v0.2** — added the parts the spec grades as *design*, not just testing:
@@ -49,6 +62,24 @@ ammeter?** A tool that reports "all good" for every input is worthless.
 **Strategy in one line:** prove the device contract at the bottom, prove the framework's *decisions* in
 the middle, prove the framework's *judgement* with deliberately faulty emulators at the top.
 
+### 0.1 Change authority
+
+The spec (line 119) says: *"Use existing ammeter emulation infrastructure - if you get an error in the
+code, please fix it. and explain the fix in the documentation."* That grants **one** permission — fixing
+errors — and no licence to reshape the device. The README additionally documents each ammeter's port,
+command and measurement logic, so changing observable SUT behaviour would also contradict deliverable 2.
+
+Therefore:
+
+- `Ammeters/` may change **only** to fix a defect that manifests in normal operation, and each change is
+  logged as a fix with its reproduction.
+- Test ergonomics — injection seams, richer return types, reference modes, logging in place of `print` —
+  are **not** grounds to modify the SUT. They are solved inside `tests/` (patching, fakes) or inside
+  `src/testing/` (our adapters).
+- Latent defects that cannot be reproduced in a normal run are **documented as limitations** and worked
+  around, not fixed.
+- `src/testing/`, `examples/`, `config/` are our deliverable area and may be designed freely.
+
 ---
 
 ## 1. Scope
@@ -69,7 +100,7 @@ the middle, prove the framework's *judgement* with deliberately faulty emulators
 - Electrical truth in amperes. The emulators are stimulus; we test contract and model consistency.
 - UI/dashboard (none exists).
 - Load beyond a small number of concurrent clients (not a requirement; listed as a risk).
-- Rewriting the emulators for elegance. Only defects and additive, justified extensions.
+- Rewriting the emulators. `Ammeters/` changes only for logged defect fixes (§0.1, §13.1).
 
 ---
 
@@ -120,6 +151,11 @@ Rules the tests enforce:
 
 ```python
 @dataclass(frozen=True)
+class Measurement:
+    value: float
+    inputs: dict[str, float]     # what the protocol carried; today {} (value only)
+
+@dataclass(frozen=True)
 class Sample:
     ammeter: str
     sequence: int
@@ -151,6 +187,10 @@ class RunResult:
 
 Frozen (`frozen=True`) is deliberate: results are artifacts, and a mutable result object invites
 accidental post-analysis mutation. Tests assert immutability.
+
+`Measurement` belongs to the **framework adapter layer**, not to `Ammeters/`. The wire protocol carries
+only the current, so `inputs` is empty today, and the emulator is deliberately **not** modified to expose
+its random draws (§0.1, §18).
 
 ### 3.3 Run lifecycle
 
@@ -317,7 +357,7 @@ available is a ladder of oracles, strongest first. None is sufficient alone; §6
 |---|---|---|---|
 | 1 | Provable bounds | output lies inside the range implied by the input constants | **none** |
 | 2 | Formula oracle | output equals the formula applied to the emulator's *own reported inputs* | **none** |
-| 3 | Seeded golden values | the model did not change (ranges, draw order) | none (seeded) |
+| 3 | Injected golden values | the model did not change (ranges, draw order) | none (deterministic) |
 | 4 | Distribution tests | the generator behaves like its intended distribution | low, if tolerance is derived |
 | 5 | Metamorphic statistics | the framework's maths is invariant under known transforms | none |
 | 6 | Mutation controls | the tests above actually detect defects | n/a (meta) |
@@ -342,40 +382,50 @@ Deterministic, seed-free, tolerance-free, and a ×10 scale error leaves the rang
 
 **Misses:** a generator stuck on one legal value.
 
-#### 6.2.2 Formula oracle
+#### 6.2.2 Formula oracle — in-process, no log parsing
 
-Each emulator prints its own random inputs, so the relationship is checkable without a known value:
+The invariant `I = V/R` is checked at unit level, where the real draws can be **observed** without
+changing the SUT. `wraps=` calls the real function and records the call:
 
 ```python
-# "Voltage: 5.85V, Resistance: 82.63Ω, Current: 0.0708A"
+with patch("Ammeters.Greenlee_Ammeter.generate_random_float",
+           wraps=generate_random_float) as spy:
+    current = GreenleeAmmeter(port).measure_current()
+
+self.assertEqual(spy.call_count, 2)          # fails loudly if the patch target is wrong
+voltage, resistance = (c.args[0] for c in spy.call_args_list)
 self.assertAlmostEqual(current, voltage / resistance, places=12)
 ```
 
-Any `(V, R)` pair must satisfy `I = V/R`, so this catches swapped operands, wrong operators and missing
-division — defects bounds cannot see. Long term, the adapter contract (§3.2) replaces `print` parsing
-with a returned `Measurement(value, inputs)` object.
+Two properties matter: the values are **real** (nothing injected), and the relationship is verified
+against what the code actually passed. `spy.call_args_list` must be non-empty — if the patch target is
+wrong, that assertion fails loudly instead of the test passing vacuously.
 
-#### 6.2.3 Seeded golden values — blocked until F6 is fixed
+**Not** using the printed log. `print` output is debug text, not a contract: it can be reworded freely,
+it round-trips floats lossily, and a test that passes because the text matched proves nothing about the
+value the client received. Logs are read only to prove that *logging* happened (§13.3, logger).
 
-With an injectable RNG, `measure_current()` becomes reproducible:
+The invariant is therefore unavailable over the socket — the wire carries only the current — and that is
+acceptable: over the socket we assert bounds and distribution (§6.2.1, §6.2.4).
+
+#### 6.2.3 Golden values — injected, not seeded
+
+Exact expected values come from `side_effect`, which is test-side and requires no constructor parameter:
 
 ```python
-emulator = GreenleeAmmeter(port, rng=random.Random(42))
-self.assertEqual(emulator.measure_current(), 0.9573...)   # stable forever
+with patch("Ammeters.Greenlee_Ammeter.generate_random_float", side_effect=[10.0, 0.1]):
+    self.assertEqual(GreenleeAmmeter(port).measure_current(), 100.0)
 ```
 
-This does not test randomness — it tests that nobody accidentally changed the ranges or the **order of
-draws** (swapping `voltage` and `resistance` changes every value while staying in bounds).
+This tests three things at once: the arithmetic, the **boundary** (probability zero under real draws),
+and — with `assert_has_calls([call(1.0, 10.0), call(0.1, 100.0)])` — that the model constants and the
+draw order did not change.
 
-Today it is impossible for two reasons, both in `base_ammeter.py`:
-
-- `random.seed(time.time())` in `__init__` reseeds the **global** RNG, so constructing any emulator
-  invalidates a previously seeded stream and makes outcome order-dependent.
-- `time.time()` has coarse resolution: two emulators built in the same tick receive the **same seed**
-  and emit identical streams — the cross-ammeter distortion already recorded as F6.
-
-Order of work: fix the seam (accept `rng: random.Random`, default `random.Random()`), retro-test the
-fix, *then* introduce golden values.
+Seeding the global RNG would be the alternative, but it is unavailable here without editing the SUT:
+`random.seed(time.time())` in `base_ammeter.py.__init__` reseeds the **global** generator, so any test
+that seeds first is silently undone by constructing an emulator. Under §0.1 that line is a documented
+limitation, not a fix: nothing in a normal run reproduces a failure from it. Injection sidesteps it
+entirely.
 
 #### 6.2.4 Distribution tests
 
@@ -398,8 +448,9 @@ tolerance = z · sd / √N        # z = 1.96 for 95 %
 ```
 
 For quantities without closed form (Greenlee's median, quantiles, tail shape) generate a **reference
-sample from the same model with a fixed seed** and compare, or use a bucketed χ² / KS check. A fixed
-seed makes even those deterministic.
+sample in the test** from the same model using its own `random.Random(seed)` and compare, or use a
+bucketed χ² / KS check. The seed lives in the test; the SUT is untouched, and the comparison stays
+deterministic.
 
 #### 6.2.5 Metamorphic and aggregate controls
 
@@ -414,12 +465,12 @@ At framework level, randomness is the point, so oracles are relational:
 
 A corpus of faulty adapters proves the oracles above are actually watching:
 
-| Planted defect | Bounds | Formula | Distribution | Seeded golden |
+| Planted defect | Bounds | Formula | Distribution | Injected golden |
 |---|---|---|---|---|
 | ×10 scale factor | ✅ | ❌ | ✅ | ✅ |
 | constant 0.05 (legal for Greenlee) | ❌ | ❌ | ✅ | ✅ |
 | `R / V` instead of `V / R` | ⚠️ sometimes | ✅ | ✅ | ✅ |
-| swapped draw order (stream shift) | ❌ | ❌ | ❌ | ✅ |
+| draw order changed (voltage second) | ❌ | ❌ | ❌ | ✅ |
 | off-by-one sample count | ❌ | ❌ | ✅ | ✅ |
 | `NaN` / empty reply | ❌ | ❌ | ❌ | ❌ → needs the protocol oracle (§9) |
 
@@ -431,13 +482,14 @@ No single technique is sufficient — that table is the argument for using all o
 |---|---|
 | Is the value physically plausible? | Provable bounds (§6.2.1) |
 | Is the arithmetic right? | Formula oracle (§6.2.2) |
-| Did the model change? | Seeded golden values (§6.2.3) |
+| Did the model change? | Injected golden values (§6.2.3) |
 | Does the generator match its distribution? | Analytic moments / reference sample (§6.2.4) |
 | Does the framework analyse correctly? | Metamorphic statistics (§6.2.5) |
 | Are these tests real? | Mutation corpus (§6.2.6) |
 
-**CI policy:** seeded runs for determinism, plus one **unseeded, bounds-only smoke run** so a lucky seed
-cannot hide a defect. Both depend on the F6 seam fix.
+**CI policy:** deterministic tests (bounds, injection, formula) form the gate; one real-draw,
+no-patching smoke run per ammeter keeps the genuine path covered, so no injected test can hide a wiring
+defect. Nothing here depends on changing the SUT.
 
 ---
 
@@ -454,7 +506,7 @@ cannot hide a defect. Both depend on the F6 seam fix.
 | Adapter contract | Contract test reused per implementation | the same suite runs against all three emulators **and** a fake adapter |
 | Cross-ammeter comparison | Pairwise / combinatorial | 3 ammeters × 3 parameter combos × success/failure = 18, cheap to enumerate |
 | Statistics | **Metamorphic** | duplicate dataset → mean/median/stddev unchanged; scale by k → mean × k, stddev × k |
-| Nondeterministic output | Bounds + formula + seed + distribution (§6.2) | every draw inside the provable range; `I == V/R` from reported inputs; seeded exact value; mean within SE-derived tolerance |
+| Nondeterministic output | Bounds + formula + injection + distribution (§6.2) | every draw inside the provable range; `I == V/R` from observed calls; injected exact value; mean within SE-derived tolerance |
 | Result management | Idempotency + uniqueness | two runs in the same second get distinct IDs; rerun finds priors; compare 1 vs N runs; empty history |
 | **Performance consistency** | Repeated runs, dispersion | same config k = 5 times → spread of means; CV per ammeter; drift per run must be bounded |
 | **Historical comparison** | Pairwise across runs | same ammeter across configs; across ammeters in one run; non-comparable configs must be labelled, not silently compared |
@@ -467,15 +519,16 @@ expected value. Performance consistency and comparison runs are the bonus-requir
 ## 8. Determinism policy (anti-flake charter)
 
 - **Inject the clock.** Sampling tests use a fake clock. No test asserts wall-clock timing by sleeping.
-- **Inject the RNG.** Per-adapter seeded generators, not the global `random` module (currently reseeded
-  per instance — defect F6, to be fixed and then tested).
-- **Seeding is a tool, not a default.** CI runs seeded for determinism, plus one unseeded bounds-only
-  smoke run so a lucky seed cannot mask a defect (§6.2.7).
+  The clock seam lives in the framework (`src/testing/`), not in the SUT.
+- **Control randomness from the test side.** `patch(..., side_effect=...)` for chosen values,
+  `patch(..., wraps=...)` for observed real draws. No constructor seam in `Ammeters/` (§0.1).
+- **One real-draw test per ammeter.** Never mocked, never injected — it proves the genuine path works
+  and that the other tests are not passing vacuously.
 - **Ports are never hard-coded** in tests: allocate, retry on collision, assert behaviour against a
   closed port rather than assuming one is free. (macOS: port 5000 is held by ControlCenter.)
 - **Timing assertions use tolerance bands** derived from the requirement, plus a separate drift test.
 - **Flake budget = 0.** A 95%-green test is a defect; quarantine it, do not retry blindly.
-- Each test declares itself deterministic, seeded, or tolerance-based.
+- Each test declares itself deterministic, injected, or tolerance-based.
 
 ---
 
@@ -488,7 +541,7 @@ Every fault must produce a typed, actionable error — never a traceback, never 
 | Transport | port occupied | `TransportError`, fail fast, names ammeter + port |
 | Transport | server slow to start | bounded wait then `SampleTimeout` (no fixed sleep) |
 | Transport | connection reset mid-reply | retry policy or typed failure; no thread death |
-| Transport | connect but never send | server must not block forever (timeout server-side) |
+| Transport | connect but never send | client must not hang: connect/read timeouts on **our** side; the server's blocking `recv` is a documented limitation (§13) |
 | Protocol | unknown / truncated / empty / extra-args command | `ProtocolError`; `ERR_UNKNOWN_COMMAND` classified, not swallowed |
 | Protocol | non-numeric reply (`NaN`, garbage, empty) | `ParseError`, not a zero measurement |
 | Config | invalid sampling combination | `ConfigError` before any socket opens |
@@ -555,23 +608,51 @@ bonus while keeping "minimize dependencies" literally true for the core.
 
 ---
 
-## 13. Known defects the framework branch must fix
+## 13. Defects, workarounds and change classification
 
-The spec (line 119) says: use the existing infrastructure, and if you hit an error, fix it and explain
-the fix. These are reproduced, not hypothetical:
+The spec (line 119) permits fixing errors in the provided infrastructure and requires the fix to be
+documented. §0.1 restricts SUT changes to that permission. This section therefore classifies every
+candidate by what it actually is — **observed error fix**, **enhancement**, **framework-side workaround**,
+or **our own code**. Each entry in the fix log should carry that label.
 
-| # | Defect | Reproduction | Fix |
+### 13.1 Already fixed in PR #1 — and how each is honestly classified
+
+| # | Change | Reproduction | Classification |
 |---|---|---|---|
-| F1 | Example cannot import the package | `python examples/run_tests.py` → `ModuleNotFoundError: No module named 'src'` | runnable entry point (`python -m examples.run_tests`) or path bootstrap |
-| F2 | Example calls the API wrongly | `python -m examples.run_tests` → `TypeError: run_test() missing 1 required positional argument: 'ammeter_type'` | align signature with usage |
-| F3 | `run_test()` is a stub | body is `pass` → returns `None`; comparison prints nothing, silently | implement, or fail loudly while unimplemented |
-| F4 | `Dict` never imported | `def run_test(...) -> Dict` in `src/testing/test_framework.py`; imports fine on 3.14 (PEP 649 defers annotations), **`NameError` on 3.13 and below** | import or use `dict[str, Any]` |
-| F5 | No server-side timeout | a client that connects and never sends blocks every later request | deadline on `recv` (§9) |
-| F6 | Global RNG reseeded per emulator | `random.seed(time.time())` in `base_ammeter.py` distorts cross-ammeter statistics | per-instance generator |
-| F7 | Logger is dead and broken | never imported; no handler, no level, no file written | fix and wire it, then test that a line lands in the file |
+| 1 | `SO_REUSEADDR` before `bind()` | second run → `OSError [Errno 48]` | **error fix** |
+| 2 | Client sends the full command | all three → `No data received.` | **error fix** |
+| 3 | Server replies `ERR_UNKNOWN_COMMAND` | none — silence is the old behaviour | **enhancement** (observability; the error itself was #2) |
+| 4 | Ports/commands read from config + drift guard | none — no mismatch ever occurred | **enhancement** (serves the config-driven bonus) |
+| 5 | `load_config` raises clear errors | none — the shipped config is valid | **robustness** (serves the error-handling criterion) |
+| 6 | `KeyboardInterrupt` guard | Ctrl-C → raw traceback | **error fix** |
 
-F4 is the clearest argument for the version matrix in §14 — the dev venv is Python 3.14.6, where the
-bug is invisible.
+Three of six are error fixes; three are justified enhancements. The fix log should say so rather than
+presenting all six as bugs, which is both more accurate and more defensible under review.
+
+### 13.2 Framework-side workarounds — no SUT change
+
+| Issue | Why not fixed in the SUT | What the framework does |
+|---|---|---|
+| Stalled client blocks the server (`conn.recv` has no timeout) | Only reproducible by an artificially stalled client; a normal run never triggers it | Sets connect/read timeouts on its own sockets and fails that ammeter with `SampleTimeout`; limitation documented |
+| `random.seed(time.time())` reseeds the global RNG in `__init__` | Latent; not reproducible in a normal run | Controls randomness with `patch(side_effect=...)` / `patch(wraps=...)`; limitation documented |
+| Server threads never stop (daemon threads, infinite `accept` loop) | No shutdown API exists; adding one is a design change | Framework owns its adapters' lifecycle and does not rely on server shutdown; documented |
+| Emulators print to stdout from server threads | Changing it alters documented behaviour and is unnecessary | Framework logs separately; the SUT keeps printing |
+
+### 13.3 Withdrawn, or our own code
+
+| Item | Status |
+|---|---|
+| `examples/run_tests.py` → `ModuleNotFoundError: No module named 'src'` | **Withdrawn** — the README says *"don't use it"*. Fix only if the example is kept, and then in `examples/`, not the SUT |
+| Example passes no argument to `run_test()` → `TypeError` | Same as above; resolves when the API is implemented |
+| `run_test()` body is `pass` → returns `None` | **Our deliverable** — implement it |
+| `Dict` used without import in `src/testing/test_framework.py` → `NameError` on ≤3.13 | **Our code** — fix when implementing; §14 explains why the dev venv hides it |
+| `src/utils/logger.py` — dead and broken: never imported, no handler, no level, no file written | **Our code** — fix, wire it into the framework, then test that a line lands in the file |
+
+### 13.4 Remaining SUT fixes
+
+None currently identified: no reproducible error remains in `Ammeters/`. Any future candidate must
+supply a reproduction, a root cause, before/after evidence and the classification above — otherwise it
+is worked around (§13.2) or documented as a limitation.
 
 ---
 
@@ -579,6 +660,8 @@ bug is invisible.
 
 **Python:** dev venv is **3.14.6**. CI matrix minimum: **3.13 + 3.14** (the eager→deferred annotation
 boundary; 3.11 if a lower bound is wanted). Any test relying on annotation evaluation must run on both.
+This is how a missing `Dict` import — invisible on 3.14 because PEP 649 defers annotations — surfaces as
+a `NameError` on 3.13.
 
 **Operating systems:** macOS (dev), Linux, Windows. Known differences that must be designed for, not
 discovered:
@@ -592,7 +675,8 @@ discovered:
 | Test process model | no `fork` | `fork` available (we do not rely on it) |
 
 **Entry criteria (Definition of Ready):** §3 contract signed off; §4 schema and precedence signed off;
-clock/RNG seams identified; ports allocated dynamically.
+the framework's clock seam identified — no SUT seam is required or permitted (§0.1); ports allocated
+dynamically.
 
 **Exit criteria (Definition of Done):**
 
@@ -602,6 +686,8 @@ clock/RNG seams identified; ports allocated dynamically.
 - Zero unclassified tracebacks in any error-path test.
 - Every row of §4.1 covered by a test; every spec bullet in §12 has evidence.
 - One end-to-end run artifact committed as a sample.
+- **SUT change audit:** `git diff` against the supplied `Ammeters/` contains only fixes logged in §13.1
+  with a reproduction — no test-only edits.
 
 ---
 
@@ -610,7 +696,7 @@ clock/RNG seams identified; ports allocated dynamically.
 | Risk | Impact | Mitigation |
 |---|---|---|
 | Sampling-parameter ambiguity unresolved | Framework "correct" by accident; untestable | §4.1 signed off before code |
-| Statistical assertions too tight | Chronic flake; suite loses trust | Seeded RNG + justified tolerances |
+| Statistical assertions too tight | Chronic flake; suite loses trust | Injected values, reference samples, and tolerances derived per §6.2.4 |
 | Ports/threads leak between runs | Fails only on CI | L2 lifecycle + leak assertions |
 | Framework tuned to three emulators | "Flexibility" criterion fails | 4th-ammeter extension test |
 | Real-clock timing in tests | Flake under CI load | Virtual clock seam |
@@ -624,13 +710,15 @@ clock/RNG seams identified; ports allocated dynamically.
 ## 16. Metrics reported
 
 - **Requirement traceability:** spec bullets covered / total (§12).
-- **Detection score:** seeded defects caught / planted (§10).
+- **Detection score:** planted defects caught / planted (§10).
 - **False positives:** correct runs flagged / total correct runs.
 - **Flake rate:** target 0.
 - **Runtime budget:** per level, slow tests separated.
 - **Error-path coverage:** every branch that must raise is checked to raise a *typed* error.
-- **Tolerance provenance:** every numeric tolerance cites either `z · sd / √N` or a fixed-seed
-  reference sample — no hand-waved ±5 % (§6.2.4).
+- **Tolerance provenance:** every numeric tolerance cites either `z · sd / √N` or a seeded reference
+  sample generated inside the test — no hand-waved ±5 % (§6.2.4).
+- **SUT change audit:** lines changed in `Ammeters/`, each traceable to a logged defect fix; the target
+  for the framework branch is **zero new SUT changes**.
 - Coverage %, if reported at all, only as branch coverage on decision code — line coverage is inflated
   by the E2E path.
 
@@ -640,8 +728,8 @@ clock/RNG seams identified; ports allocated dynamically.
 
 | Phase | Focus | Gate |
 |---|---|---|
-| **P0** | Sign off §3 contract, §4 schema + precedence, §3.4 taxonomy, artifact contract | No code before this |
-| **P1** | Fix F1–F4 (§13); L0 contract tests for all three emulators; client returns a value | Device + API contract locked |
+| **P0** | Sign off §0.1 change authority, §3 contract, §4 schema + precedence, §3.4 taxonomy, artifact contract | No code before this |
+| **P1** | Clear §13.3 (our own code); L0 contract tests for all three emulators; client returns a value | Device + API contract locked |
 | **P2** | L1 units: stats, config validation, precedence table (§4.1), run ID, clock | Pure logic green |
 | **P3** | L2/L3: adapters, sampling with injected clock, storage, E2E from YAML | Deliverable works |
 | **P4** | L4: timing/drift, leaks, cross-platform matrix, dependency trim, visualization | Usable, not just working |
@@ -657,7 +745,12 @@ clock/RNG seams identified; ports allocated dynamically.
 - No test whose only purpose is raising a coverage number.
 - No retry-until-green in CI.
 - No electrical-trueness claims without a reference (§6.1).
-- No rewriting the emulators for style — only F5–F7 and additive, approved extensions.
+- **No SUT changes for testability.** `Ammeters/` is modified only for a defect that reproduces in
+  normal operation, with the fix logged (§0.1, §13.1). Injection seams, richer return types, reference
+  modes and logging-from-the-device are rejected on principle — control, observation and formatting are
+  the framework's job.
+- **No log parsing as an oracle.** A measurement is asserted from returned data or observed calls; logs
+  are read only to prove that logging happened.
 
 ---
 
@@ -665,7 +758,7 @@ clock/RNG seams identified; ports allocated dynamically.
 
 | # | Decision | Proposed default | Alternative |
 |---|---|---|---|
-| **Q1** | Accuracy framing (§6.1) | Precision/stability comparison, limitation stated; reference mode deferred | Add an instrumented reference mode to emulators for trueness |
+| **Q1** | Accuracy framing (§6.1) | Precision/stability comparison, limitation stated | Trueness measurement — would require a reference mode, which is a SUT change and conflicts with §18, so it would need an explicit exception |
 | **Q2** | Visualization (§11) | stdlib CSV + text table; matplotlib optional behind a guarded import | matplotlib required for the bonus |
 | **Q3** | README (deliverable 2) | Add "How to run" + installed libraries **and** correct the wrong ports/CIRCUTOR command | Leave README untouched, document usage elsewhere |
 | **Q4** | Precedence rule (§4.1) | count + frequency authoritative, duration derived, conflict = `ConfigError` | duration + frequency authoritative, or "last one wins" |
