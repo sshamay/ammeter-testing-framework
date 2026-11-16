@@ -16,6 +16,8 @@ class AmmeterEmulatorBase(ABC):
         The server will run indefinitely, handling one client request at a time.
         """
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            # Allow rebinding while the previous connection is still in TIME_WAIT (~30s on macOS).
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind(('localhost', self.port))
             s.listen()
             print(f"{self.__class__.__name__} is running on port {self.port}")
@@ -24,10 +26,16 @@ class AmmeterEmulatorBase(ABC):
                 with conn:
                     print(f"Connected by {addr}")
                     data = conn.recv(1024)
+                    if not data:
+                        continue
                     if data == self.get_current_command:
                         # Call the specific measure_current() method defined in subclasses
                         current = self.measure_current()
                         conn.sendall(str(current).encode('utf-8'))
+                    else:
+                        # Reply instead of closing silently, so a wrong request is visible to the caller.
+                        print(f"Unknown command: {data!r}")
+                        conn.sendall(b'ERR_UNKNOWN_COMMAND')
 
     @property
     @abstractmethod
