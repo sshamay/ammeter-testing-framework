@@ -1,11 +1,21 @@
 # Test Strategy & Plan — Ammeter Measurement System
 
-Status: **draft v0.2 — for review**
+Status: **draft v0.3 — for review**
 Source requirements: `Exam/ammeter-test-specification.md`, `README.md`, `config/config.yaml`,
 existing code in `Ammeters/`, `src/`.
 Related: `docs/test_framework_README.md` (fix log), `methodology/00-preflight-checklist.md` (gates).
 
 ## Changelog
+
+**v0.3** — added §6.2 "Testing nondeterministic output":
+
+- The oracle ladder for random devices: provable bounds, formula oracle, seeded golden values,
+  distribution tests, metamorphic statistics, mutation controls.
+- Derived (not guessed) figures: provable output ranges per ammeter, analytic means, coefficients of
+  variation, and the sample size each oracle needs to be stable.
+- Records that seeded testing is **blocked today** by the global RNG reseed (F6), and which planted
+  defect each technique does and does not catch.
+- Notes the CIRCUTOR unit-scale inconsistency as independent evidence for the §6.1 precision-only framing.
 
 **v0.2** — added the parts the spec grades as *design*, not just testing:
 
@@ -290,6 +300,148 @@ stated in the report. If a trueness number is wanted, the only honest route is a
 mode** (env flag or config) that pins an emulator's internal inputs and exposes the expected current —
 an additive extension, explicitly out of the current scope and pending approval (§19 Q1).
 
+A second, independent reason the absolute comparison fails: the three models do not share a unit scale.
+`CircutorAmmeter.measure_current()` returns `dt · ΣV`, i.e. **voltage × time**, not current — a Rogowski
+coil requires `I = (1/M) · ∫V dt` with mutual inductance `M`, which the emulator omits. So CIRCUTOR
+outputs 0.001–0.1 while ENTES outputs 5–200. Comparing those as "amperes" would be meaningless; the
+model inconsistency is recorded as an observation, not fixed (it is a modelling choice, not a crash).
+
+---
+
+### 6.2 Testing nondeterministic output
+
+The emulators draw their inputs at random, so **no test may assert a measurement's value**. What is
+available is a ladder of oracles, strongest first. None is sufficient alone; §6.2.6 shows why.
+
+| # | Technique | Asserts | Flake risk |
+|---|---|---|---|
+| 1 | Provable bounds | output lies inside the range implied by the input constants | **none** |
+| 2 | Formula oracle | output equals the formula applied to the emulator's *own reported inputs* | **none** |
+| 3 | Seeded golden values | the model did not change (ranges, draw order) | none (seeded) |
+| 4 | Distribution tests | the generator behaves like its intended distribution | low, if tolerance is derived |
+| 5 | Metamorphic statistics | the framework's maths is invariant under known transforms | none |
+| 6 | Mutation controls | the tests above actually detect defects | n/a (meta) |
+
+#### 6.2.1 Provable bounds
+
+The ranges are constants, so the output range is arithmetic, not a guess:
+
+| Ammeter | Formula | Inputs | Provable output range |
+|---|---|---|---|
+| Greenlee | `I = V / R` | V ∈ [1, 10], R ∈ [0.1, 100] | **0.01 – 100** |
+| ENTES | `I = B · K` | B ∈ [0.01, 0.1], K ∈ [500, 2000] | **5 – 200** |
+| CIRCUTOR | `I = dt · ΣV` (10 samples) | dt ∈ [0.001, 0.01], V ∈ [0.1, 1.0] | **0.001 – 0.1** |
+
+```python
+self.assertGreaterEqual(current, 0.01)   # Greenlee
+self.assertLessEqual(current, 100.0)
+```
+
+Deterministic, seed-free, tolerance-free, and a ×10 scale error leaves the range immediately.
+`random.uniform` yields `[a, b)`, so assert `≤`, never `<`.
+
+**Misses:** a generator stuck on one legal value.
+
+#### 6.2.2 Formula oracle
+
+Each emulator prints its own random inputs, so the relationship is checkable without a known value:
+
+```python
+# "Voltage: 5.85V, Resistance: 82.63Ω, Current: 0.0708A"
+self.assertAlmostEqual(current, voltage / resistance, places=12)
+```
+
+Any `(V, R)` pair must satisfy `I = V/R`, so this catches swapped operands, wrong operators and missing
+division — defects bounds cannot see. Long term, the adapter contract (§3.2) replaces `print` parsing
+with a returned `Measurement(value, inputs)` object.
+
+#### 6.2.3 Seeded golden values — blocked until F6 is fixed
+
+With an injectable RNG, `measure_current()` becomes reproducible:
+
+```python
+emulator = GreenleeAmmeter(port, rng=random.Random(42))
+self.assertEqual(emulator.measure_current(), 0.9573...)   # stable forever
+```
+
+This does not test randomness — it tests that nobody accidentally changed the ranges or the **order of
+draws** (swapping `voltage` and `resistance` changes every value while staying in bounds).
+
+Today it is impossible for two reasons, both in `base_ammeter.py`:
+
+- `random.seed(time.time())` in `__init__` reseeds the **global** RNG, so constructing any emulator
+  invalidates a previously seeded stream and makes outcome order-dependent.
+- `time.time()` has coarse resolution: two emulators built in the same tick receive the **same seed**
+  and emit identical streams — the cross-ammeter distortion already recorded as F6.
+
+Order of work: fix the seam (accept `rng: random.Random`, default `random.Random()`), retro-test the
+fix, *then* introduce golden values.
+
+#### 6.2.4 Distribution tests
+
+Because the input distributions are known, the output moments are analytic:
+
+| Ammeter | Analytic mean | SD | CV | Mean usable as an oracle? |
+|---|---|---|---|---|
+| ENTES | **68.75** exactly | 41.8 | 0.61 | Yes — SE ≈ 1.32 (1.9 % of mean) at N = 1000 |
+| CIRCUTOR | **0.0303** exactly | 0.0151 | 0.50 | Yes — SE ≈ 1.6 % at N = 1000 |
+| Greenlee | **0.380** | 1.885 | **≈ 5.0** | **No** — heavy tail; SE ≈ 16 % of mean at N = 1000 |
+
+Greenlee is the trap: `R` can approach 0.1, producing values up to 100 while the mean sits at 0.38. A
+mean-based assertion there looks "flaky" when it is simply the wrong statistic. Use **median and
+quantiles** for Greenlee.
+
+Tolerance rule — derive it, never guess it:
+
+```
+tolerance = z · sd / √N        # z = 1.96 for 95 %
+```
+
+For quantities without closed form (Greenlee's median, quantiles, tail shape) generate a **reference
+sample from the same model with a fixed seed** and compare, or use a bucketed χ² / KS check. A fixed
+seed makes even those deterministic.
+
+#### 6.2.5 Metamorphic and aggregate controls
+
+At framework level, randomness is the point, so oracles are relational:
+
+- duplicate every sample → mean, median and stddev unchanged
+- multiply every sample by k → mean × k, stddev × k, CV unchanged
+- N samples in → `stats.count == N` exactly
+- constant-valued adapter → stddev = 0, not `ZeroDivisionError`
+
+#### 6.2.6 Mutation controls — which technique catches what
+
+A corpus of faulty adapters proves the oracles above are actually watching:
+
+| Planted defect | Bounds | Formula | Distribution | Seeded golden |
+|---|---|---|---|---|
+| ×10 scale factor | ✅ | ❌ | ✅ | ✅ |
+| constant 0.05 (legal for Greenlee) | ❌ | ❌ | ✅ | ✅ |
+| `R / V` instead of `V / R` | ⚠️ sometimes | ✅ | ✅ | ✅ |
+| swapped draw order (stream shift) | ❌ | ❌ | ❌ | ✅ |
+| off-by-one sample count | ❌ | ❌ | ✅ | ✅ |
+| `NaN` / empty reply | ❌ | ❌ | ❌ | ❌ → needs the protocol oracle (§9) |
+
+No single technique is sufficient — that table is the argument for using all of them.
+
+#### 6.2.7 Which oracle answers which question
+
+| Question | Oracle |
+|---|---|
+| Is the value physically plausible? | Provable bounds (§6.2.1) |
+| Is the arithmetic right? | Formula oracle (§6.2.2) |
+| Did the model change? | Seeded golden values (§6.2.3) |
+| Does the generator match its distribution? | Analytic moments / reference sample (§6.2.4) |
+| Does the framework analyse correctly? | Metamorphic statistics (§6.2.5) |
+| Are these tests real? | Mutation corpus (§6.2.6) |
+
+**CI policy:** seeded runs for determinism, plus one **unseeded, bounds-only smoke run** so a lucky seed
+cannot hide a defect. Both depend on the F6 seam fix.
+
+---
+
+
 ---
 
 ## 7. Test design techniques by area
@@ -302,6 +454,7 @@ an additive extension, explicitly out of the current scope and pending approval 
 | Adapter contract | Contract test reused per implementation | the same suite runs against all three emulators **and** a fake adapter |
 | Cross-ammeter comparison | Pairwise / combinatorial | 3 ammeters × 3 parameter combos × success/failure = 18, cheap to enumerate |
 | Statistics | **Metamorphic** | duplicate dataset → mean/median/stddev unchanged; scale by k → mean × k, stddev × k |
+| Nondeterministic output | Bounds + formula + seed + distribution (§6.2) | every draw inside the provable range; `I == V/R` from reported inputs; seeded exact value; mean within SE-derived tolerance |
 | Result management | Idempotency + uniqueness | two runs in the same second get distinct IDs; rerun finds priors; compare 1 vs N runs; empty history |
 | **Performance consistency** | Repeated runs, dispersion | same config k = 5 times → spread of means; CV per ammeter; drift per run must be bounded |
 | **Historical comparison** | Pairwise across runs | same ammeter across configs; across ammeters in one run; non-comparable configs must be labelled, not silently compared |
@@ -315,7 +468,9 @@ expected value. Performance consistency and comparison runs are the bonus-requir
 
 - **Inject the clock.** Sampling tests use a fake clock. No test asserts wall-clock timing by sleeping.
 - **Inject the RNG.** Per-adapter seeded generators, not the global `random` module (currently reseeded
-  per instance — a real defect, to be fixed and then tested).
+  per instance — defect F6, to be fixed and then tested).
+- **Seeding is a tool, not a default.** CI runs seeded for determinism, plus one unseeded bounds-only
+  smoke run so a lucky seed cannot mask a defect (§6.2.7).
 - **Ports are never hard-coded** in tests: allocate, retry on collision, assert behaviour against a
   closed port rather than assuming one is free. (macOS: port 5000 is held by ControlCenter.)
 - **Timing assertions use tolerance bands** derived from the requirement, plus a separate drift test.
@@ -462,6 +617,7 @@ clock/RNG seams identified; ports allocated dynamically.
 | Silent-failure class returns (`No data received.`) | Wrong results, no exception | Negative oracles: failure must be *reported* |
 | `results/` gitignore blocks sample deliverable | Deliverable 3 unmet at submission | `!results/sample/` exception, verified in a clean clone |
 | Trueness claimed without a reference | Technically indefensible | §6.1 framing, limitation stated |
+| Asserting a mean on a heavy-tailed signal (Greenlee) | "Flaky" tests that are mis-specified, not flaky | §6.2.4: median/quantiles where CV > 1; tolerance = z·sd/√N |
 
 ---
 
@@ -473,6 +629,8 @@ clock/RNG seams identified; ports allocated dynamically.
 - **Flake rate:** target 0.
 - **Runtime budget:** per level, slow tests separated.
 - **Error-path coverage:** every branch that must raise is checked to raise a *typed* error.
+- **Tolerance provenance:** every numeric tolerance cites either `z · sd / √N` or a fixed-seed
+  reference sample — no hand-waved ±5 % (§6.2.4).
 - Coverage %, if reported at all, only as branch coverage on decision code — line coverage is inflated
   by the E2E path.
 
