@@ -9,7 +9,10 @@ Each class maps to one row of the fix log in docs/test_framework_README.md.
 
 import io
 import os
+import signal
 import socket
+import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -195,6 +198,33 @@ class TestLoadConfigErrors(unittest.TestCase):
         config = load_config(CONFIG_PATH)
         self.assertIsInstance(config, dict)
         self.assertEqual(set(config["ammeters"]), {"greenlee", "entes", "circutor"})
+
+
+class TestInterruptedRun(unittest.TestCase):
+    """Fix 6: Ctrl-C stops the run with a message instead of a traceback."""
+
+    def test_ctrl_c_exits_without_traceback(self):
+        process = subprocess.Popen(
+            [sys.executable, "main.py"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        try:
+            time.sleep(1.5)
+            if process.poll() is not None:
+                self.skipTest("main.py finished before the interrupt could be sent")
+            process.send_signal(signal.SIGINT)
+            output, _ = process.communicate(timeout=20)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+
+        self.assertNotIn("Traceback", output)
+        self.assertNotIn("KeyboardInterrupt", output)
+        self.assertIn("Stopped by user.", output)
+        self.assertEqual(process.returncode, 0)
 
 
 class TestEmulatorMeasurements(unittest.TestCase):
