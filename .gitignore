@@ -6,9 +6,8 @@ __pycache__/
 venv/
 env/
 
-# Test / runtime output
-results/*
-!results/sample/
+# Test / runtime output — never committed
+results/
 *.log
 
 # Editors and OS
