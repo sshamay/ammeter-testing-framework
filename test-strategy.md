@@ -6,13 +6,14 @@ docs, sample results, design notes. Graded on structure, flexibility, error hand
 
 **Change scope (frozen supplied files):** `Ammeters/` (all emulators and client), `main.py`,
 `config/config.yaml`, root `README.md` — read-only. Its inaccurate ports/commands are recorded as
-deviations in `docs/test_framework_README.md`, not fixed.
+deviations in `test_framework_README.md`, not fixed.
 
 **Ours:** `src/testing/*`, `src/utils/logger.py`, new files under `tests/`, and `requirements.txt` —
-every dependency change must be documented in `docs/test_framework_README.md`. `src/utils/config.py`
+every dependency change must be documented in `test_framework_README.md`. `src/utils/config.py`
 is also left alone: validation and sampling resolution go in new `src/testing/` modules.
 
-Detail (oracle derivations, full 18 config cases, risks): `methodology/test-strategy-appendix.md`.
+Detail (oracle derivations, full 18 config cases, risks): local-only `methodology/test-strategy-appendix.md`
+(working notes, not committed).
 
 ## Plan — tick one task at a time
 
@@ -20,7 +21,7 @@ Detail (oracle derivations, full 18 config cases, risks): `methodology/test-stra
 |---|---|---|
 | [x] T-01 | Freeze the decisions below. No code. | Decisions accepted. |
 | [x] T-02 | Unblock skeleton: `test_framework.py`, `logger.py`, `requirements.txt`. Add missing `Dict` import, logger handler/level/file, trim unused heavy deps (keep PyYAML). | Imports on 3.13 + 3.14; log line written; fresh venv installs. |
-| [x] T-03 | Document usage in `docs/test_framework_README.md` (do **not** touch root `README.md`): how to run, installed libs, real ports/commands, root-README deviations. `.gitignore` ignores all `results/` output. | Stranger can follow the docs verbatim; no measurement output is committed; root README unchanged in `git diff`. |
+| [x] T-03 | Document usage in `test_framework_README.md` (do **not** touch root `README.md`): how to run, installed libs, real ports/commands, root-README deviations. `.gitignore` ignores all `results/` output. | Stranger can follow the docs verbatim; no measurement output is committed; root README unchanged in `git diff`. |
 | [x] T-04 | Config validation + `resolve_sampling()` in new `src/testing/sampling.py`; framework-owned defaults in `src/testing/defaults.yaml` are merged over read-only `config.yaml` (its sampling values are `null`). Do not edit `config.py` or `config.yaml`. | 18 config cases green (appendix §4.2); errors before any socket opens; `git diff` shows no supplied file changed. |
 | [x] T-05 | Adapters: new `adapters/`. Three + fake, one shared contract suite; `open`/`read_current`/`close`, timeouts. | All four pass; no socket/thread left open. |
 | [x] T-06 | Sampler: new `sampler.py`. Count/frequency/duration precedence, injected clock, timeout, retry. | Timing tests deterministic, no `sleep()`; exact count. |
@@ -31,7 +32,7 @@ Detail (oracle derivations, full 18 config cases, risks): `methodology/test-stra
 | [x] T-11 | **BONUS** Visualization: CSV + text table; guarded matplotlib. | CSV written; missing plot package skips cleanly. |
 | [x] T-12 | **BONUS** Error simulation: faulty-adapter corpus. | Detection score 7/7; false positives 0/7 (`tests/test_fault_corpus.py`). |
 | [ ] T-13 | **BONUS** Comparison report: precision/stability from CV and drift. | No trueness claim; limitation stated. |
-| [ ] T-14 | Final docs: `docs/test_framework_README.md` (fix log + design decisions), spec → evidence map. Sample results are generated locally under ignored `results/`. | Spec coverage mapped to tests; no result artifacts committed. |
+| [ ] T-14 | Final docs: `test_framework_README.md` (fix log + design decisions), spec → evidence map. Sample results are generated locally under ignored `results/`. | Spec coverage mapped to tests; no result artifacts committed. |
 
 Bonus rows can be dropped without breaking the core deliverable. T-01…T-10 are sequential; T-11…T-13
 can start after T-09; T-14 is last.
