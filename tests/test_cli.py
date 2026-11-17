@@ -22,13 +22,9 @@ from src.testing.errors import ConfigError
 from src.testing.storage import RunResult, list_runs, load_run
 from src.testing.visualization import VisualizationSettings
 from tests.emulator_helpers import free_port, start_emulator, wait_until_listening
+from tests.support import COMMANDS
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-COMMANDS = {
-    "greenlee": "MEASURE_GREENLEE -get_measurement",
-    "entes": "MEASURE_ENTES -get_data",
-    "circutor": "MEASURE_CIRCUTOR -get_measurement -current",
-}
 
 
 def canned_result(errors=()):

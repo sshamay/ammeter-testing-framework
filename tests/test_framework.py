@@ -18,29 +18,13 @@ from src.testing.errors import ConfigError, ParseError, TransportError, describe
 from src.testing.sampler import SamplingSettings
 from src.testing.storage import RunResult, list_runs, load_run
 from src.testing.test_framework import AmmeterTestFramework, format_failure
+from tests.support import COMMANDS, NAMES, FakeClock
 
-NAMES = ("greenlee", "entes", "circutor")
-COMMANDS = {
-    "greenlee": "MEASURE_GREENLEE -get_measurement",
-    "entes": "MEASURE_ENTES -get_data",
-    "circutor": "MEASURE_CIRCUTOR -get_measurement -current",
-}
 GOOD = {
     "greenlee": (4.0, 4.1, 3.9),
     "entes": (5.0, 5.1, 4.9),
     "circutor": (0.02, 0.021, 0.019),
 }
-
-
-class FakeClock:
-    def __init__(self):
-        self.sleeps = []
-
-    def now(self):
-        return 0.0
-
-    def sleep(self, seconds):
-        self.sleeps.append(seconds)
 
 
 def write_config(directory, count=3, frequency=10):

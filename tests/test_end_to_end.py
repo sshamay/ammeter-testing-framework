@@ -1,11 +1,14 @@
 """T-10: system-level evidence — artifact shape, batch hygiene, clean-export run twice."""
 
 import io
+import os
+import signal
 import subprocess
 import sys
 import tarfile
 import tempfile
 import threading
+import time
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -21,16 +24,10 @@ from src.testing.sampler import SamplingSettings
 from src.testing.storage import list_runs, load_run
 from src.testing.test_framework import AmmeterTestFramework
 from tests.emulator_helpers import free_port, start_emulator, wait_until_listening
-from tests.test_framework import (
-    GOOD, NAMES, FakeClock, scripted_adapter_class, write_config,
-)
+from tests.support import COMMANDS, NAMES, FakeClock
+from tests.test_framework import GOOD, scripted_adapter_class, write_config
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-COMMANDS = {
-    "greenlee": "MEASURE_GREENLEE -get_measurement",
-    "entes": "MEASURE_ENTES -get_data",
-    "circutor": "MEASURE_CIRCUTOR -get_measurement -current",
-}
 ARTIFACT_KEYS = {
     "run_id", "created_utc", "config_snapshot", "statistics",
     "samples", "errors", "schema_version",
@@ -188,6 +185,46 @@ class TestCleanExport(unittest.TestCase):
             self.assertEqual(len(set(identifiers)), 2)
             for run_id in identifiers:
                 self.assertEqual(set(load_run(run_id, str(results_dir))["statistics"]), set(COMMANDS))
+
+
+class TestInterruptedRun(unittest.TestCase):
+    """Ctrl-C stops the frozen main.py with a message instead of a traceback."""
+
+    def test_ctrl_c_exits_without_traceback(self):
+        # Windows has no POSIX SIGINT for a child: use a new process group and CTRL_BREAK_EVENT,
+        # which Python still turns into KeyboardInterrupt. POSIX keeps the ordinary SIGINT path.
+        if os.name == "nt":
+            process = subprocess.Popen(
+                [sys.executable, "main.py"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+            )
+            interrupt = signal.CTRL_BREAK_EVENT
+        else:
+            process = subprocess.Popen(
+                [sys.executable, "main.py"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+            interrupt = signal.SIGINT
+        try:
+            time.sleep(1.5)
+            if process.poll() is not None:
+                self.skipTest("main.py finished before the interrupt could be sent")
+            process.send_signal(interrupt)
+            output, _ = process.communicate(timeout=20)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+
+        self.assertNotIn("Traceback", output)
+        self.assertNotIn("KeyboardInterrupt", output)
+        self.assertIn("Stopped by user.", output)
+        self.assertEqual(process.returncode, 0)
 
 
 if __name__ == "__main__":
