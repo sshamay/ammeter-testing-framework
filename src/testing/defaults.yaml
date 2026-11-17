@@ -6,3 +6,7 @@ testing:
     sampling_frequency_hz: 10
     max_sampling_frequency_hz: 1000
     on_conflict: reject
+    timeout_per_sample_seconds: 0.5
+    retry:
+      max_attempts: 2
+      backoff_seconds: 0.05

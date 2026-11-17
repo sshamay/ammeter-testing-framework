@@ -1,0 +1,170 @@
+"""T-06: deterministic sampler tests — no wall-clock waits, exact counts.
+
+Run from the repository root:
+
+    python -m unittest discover -s tests -v
+"""
+
+import io
+import unittest
+from contextlib import redirect_stdout
+from unittest.mock import patch
+
+from src.testing.adapters import FakeAmmeterAdapter
+from src.testing.errors import ConfigError, SampleTimeout, TransportError
+from src.testing.sampler import Sampler, SamplingSettings, load_sampler_settings
+from src.testing.sampling import resolve_sampling
+
+
+class FakeClock:
+    """Records waits instead of performing them."""
+
+    def __init__(self):
+        self.now_value = 0.0
+        self.sleeps = []
+
+    def now(self) -> float:
+        return self.now_value
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        self.now_value += seconds
+
+
+def plan(count=None, duration=None, frequency=None):
+    return resolve_sampling(
+        {
+            "measurements_count": count,
+            "total_duration_seconds": duration,
+            "sampling_frequency_hz": frequency,
+        }
+    )
+
+
+class TestSamplerCounts(unittest.TestCase):
+    def test_exact_count_from_count_and_frequency(self):
+        adapter = FakeAmmeterAdapter("fake", values=(1.0,))
+        clock = FakeClock()
+        series = Sampler(adapter, plan(count=5, frequency=10), clock=clock).run()
+
+        self.assertEqual(series.ammeter, "fake")
+        self.assertEqual(series.count, 5)
+        self.assertEqual(len(series.values), 5)
+        self.assertEqual(series.attempts, 5)
+        self.assertEqual(adapter.reads, 5)
+        self.assertFalse(adapter.is_open)
+
+    def test_sleeps_between_readings_only(self):
+        clock = FakeClock()
+        Sampler(FakeAmmeterAdapter(values=(1.0,)), plan(count=5, frequency=10), clock=clock).run()
+        self.assertEqual(len(clock.sleeps), 4)
+        for seconds in clock.sleeps:
+            self.assertAlmostEqual(seconds, 0.1)
+
+    def test_single_reading_does_not_sleep(self):
+        clock = FakeClock()
+        series = Sampler(FakeAmmeterAdapter(values=(7.0,)), plan(count=1, frequency=10), clock=clock).run()
+        self.assertEqual(series.values, (7.0,))
+        self.assertEqual(clock.sleeps, [])
+
+    def test_count_derived_from_duration_and_frequency(self):
+        adapter = FakeAmmeterAdapter(values=(2.0,))
+        clock = FakeClock()
+        series = Sampler(adapter, plan(duration=1, frequency=10), clock=clock).run()
+
+        self.assertEqual(series.count, 10)
+        self.assertEqual(len(clock.sleeps), 9)
+        for seconds in clock.sleeps:
+            self.assertAlmostEqual(seconds, 0.1)
+
+    def test_never_calls_real_time_sleep(self):
+        with patch("src.testing.sampler.time.sleep", side_effect=AssertionError("real sleep")):
+            Sampler(FakeAmmeterAdapter(values=(1.0,)), plan(count=3, frequency=10), clock=FakeClock()).run()
+
+
+class TestSamplerSettings(unittest.TestCase):
+    def test_defaults_come_from_framework_defaults_file(self):
+        settings = load_sampler_settings()
+        self.assertEqual(settings.timeout, 0.5)
+        self.assertEqual(settings.max_attempts, 2)
+        self.assertAlmostEqual(settings.backoff_seconds, 0.05)
+
+    def test_settings_can_be_overridden_from_config_mapping(self):
+        settings = SamplingSettings.from_config(
+            {
+                "timeout_per_sample_seconds": 2,
+                "retry": {"max_attempts": 3, "backoff_seconds": 0.2},
+            }
+        )
+        self.assertEqual(settings.timeout, 2.0)
+        self.assertEqual(settings.max_attempts, 3)
+        self.assertAlmostEqual(settings.backoff_seconds, 0.2)
+
+    def test_invalid_settings_raise_config_error(self):
+        with self.assertRaises(ConfigError):
+            SamplingSettings.from_config({"retry": {"max_attempts": 0}})
+        with self.assertRaises(ConfigError):
+            SamplingSettings.from_config({"timeout_per_sample_seconds": 0})
+
+    def test_open_uses_the_configured_timeout(self):
+        adapter = FakeAmmeterAdapter(values=(1.0,))
+        Sampler(
+            adapter,
+            plan(count=1, frequency=10),
+            settings=SamplingSettings(timeout=0.25),
+            clock=FakeClock(),
+        ).run()
+        self.assertEqual(adapter.last_timeout, 0.25)
+
+
+class TestSamplerFailures(unittest.TestCase):
+    def test_timeout_aborts_the_series_and_closes_adapter(self):
+        failure = SampleTimeout("stalled")
+        adapter = FakeAmmeterAdapter("fake", values=(failure,))
+        with self.assertRaises(SampleTimeout) as context:
+            Sampler(
+                adapter,
+                plan(count=3, frequency=10),
+                settings=SamplingSettings(max_attempts=1),
+                clock=FakeClock(),
+            ).run()
+        self.assertIs(context.exception, failure)
+        self.assertFalse(adapter.is_open)
+
+    def test_retry_recovers_and_records_transient_error(self):
+        failure = SampleTimeout("first attempt")
+        adapter = FakeAmmeterAdapter("fake", values=(failure, 2.5))
+        clock = FakeClock()
+        settings = SamplingSettings(max_attempts=2, backoff_seconds=0.05)
+        series = Sampler(adapter, plan(count=1, frequency=10), settings, clock).run()
+
+        self.assertEqual(series.values, (2.5,))
+        self.assertEqual(len(series.errors), 1)
+        self.assertIs(series.errors[0], failure)
+        self.assertEqual(series.attempts, 2)
+        self.assertEqual(clock.sleeps, [0.05])
+
+    def test_exhausted_retries_raise_last_error(self):
+        first = TransportError("first")
+        last = TransportError("last")
+        adapter = FakeAmmeterAdapter("fake", values=(first, last))
+        with self.assertRaises(TransportError) as context:
+            Sampler(
+                adapter,
+                plan(count=1, frequency=10),
+                settings=SamplingSettings(max_attempts=2),
+                clock=FakeClock(),
+            ).run()
+        self.assertIs(context.exception, last)
+        self.assertEqual(adapter.reads, 2)
+        self.assertFalse(adapter.is_open)
+
+    def test_sampler_never_prints(self):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            Sampler(FakeAmmeterAdapter(values=(1.0,)), plan(count=2, frequency=10), clock=FakeClock()).run()
+        self.assertEqual(output.getvalue(), "")
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
