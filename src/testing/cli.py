@@ -12,6 +12,13 @@ from typing import Optional, Sequence
 from .errors import MeasurementError
 from .storage import DEFAULT_RESULTS_DIR, RunResult
 from .test_framework import ALL_AMMETERS, AmmeterTestFramework
+from .visualization import (
+    DISCLAIMER,
+    VisualizationSettings,
+    format_table,
+    settings_from_config,
+    visualize,
+)
 
 
 EXIT_OK = 0
@@ -38,24 +45,23 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-save", action="store_true", help="print the summary without writing an artifact"
     )
+    parser.add_argument(
+        "--no-visualize", action="store_true",
+        help="skip CSV/text/PNG output (overrides analysis.visualization.enabled)",
+    )
     return parser
 
 
 def format_summary(
-    result: RunResult, results_dir: str = DEFAULT_RESULTS_DIR, *, saved: bool = True
+    result: RunResult,
+    results_dir: str = DEFAULT_RESULTS_DIR,
+    *,
+    saved: bool = True,
+    notes: Sequence[str] = (),
 ) -> str:
     """Plain-text precision/stability table — no trueness claim, no external dependency."""
     lines = [f"Run {result.run_id}: {len(result.statistics)} of {len(result.statistics) + len(result.errors)} ammeters measured"]
-    if result.statistics:
-        lines.append(f"{'ammeter':<12} {'n':>4} {'mean':>10} {'stddev':>10} {'CV':>9} {'drift':>10}")
-        for name in sorted(result.statistics):
-            stats = result.statistics[name]
-            lines.append(
-                f"{name:<12} {stats.count:>4} {stats.mean:>10.4f} {stats.stddev:>10.4f} "
-                f"{stats.cv:>9.4f} {stats.drift:>+10.4f}"
-            )
-    else:
-        lines.append("  (no ammeter produced readings)")
+    lines.append(format_table(result))
     if result.errors:
         lines.append(f"Errors ({len(result.errors)}):")
         lines.extend(f"  - {error}" for error in result.errors)
@@ -63,7 +69,8 @@ def format_summary(
         lines.append(f"Artifact: {Path(results_dir) / (result.run_id + '.json')}")
     else:
         lines.append("Artifact: not saved (--no-save)")
-    lines.append("Precision/stability only (no reference meter); CIRCUTOR values are V*s, not amperes.")
+    lines.extend(f"Note: {note}" for note in notes)
+    lines.append(DISCLAIMER)
     return "\n".join(lines)
 
 
@@ -71,9 +78,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         framework = AmmeterTestFramework(config_path=args.config, results_dir=args.results_dir)
+        settings = (
+            VisualizationSettings(enabled=False)
+            if args.no_visualize
+            else settings_from_config(framework.config)
+        )
         result = framework.run_test(args.ammeter, save=not args.no_save)
+        notes = ()
+        if settings.enabled:
+            notes = visualize(result, args.results_dir, settings).skipped
     except MeasurementError as error:
         print(f"ERROR: {type(error).__name__}: {error}", file=sys.stderr)
         return EXIT_FATAL
-    print(format_summary(result, args.results_dir, saved=not args.no_save))
+    print(format_summary(result, args.results_dir, saved=not args.no_save, notes=notes))
     return EXIT_PARTIAL if result.errors else EXIT_OK

@@ -10,10 +10,10 @@ Per the assignment: use the existing ammeter emulation infrastructure; if there 
 |---|---|
 | Interpreter used | Python 3.14.6 (dev virtualenv `.venv/`) |
 | Install command | `pip install -r requirements.txt` |
-| Libraries installed | **PyYAML 6.0.3 only** — needed by `src/utils/config.py` for `config/config.yaml` |
+| Libraries installed | **PyYAML 6.0.3** in a fresh venv — needed by `src/utils/config.py` for `config/config.yaml` |
 | Everything else | Python standard library: `socket`, `threading`, `statistics`, `json`, `logging`, `csv`, `unittest` |
 | Removed from `requirements.txt` | `numpy`, `scipy`, `seaborn`, `pandas`, `matplotlib` — none was imported anywhere. The spec asks to minimise dependencies. |
-| Optional, not installed | `matplotlib` is kept as a commented line for the guarded visualization import (task T-11). If it is absent, plotting is skipped cleanly. |
+| Optional, not required | `matplotlib` stays commented in `requirements.txt` for the guarded visualization import (T-11). It is present in this dev venv but not installed by `pip install -r requirements.txt`; if it is absent, plotting is skipped cleanly and CSV/text output still works. Both cases are tested. |
 
 Verified: a fresh virtualenv created from `requirements.txt` alone can import `yaml` and `AmmeterTestFramework`.
 
@@ -31,7 +31,8 @@ Work is delivered as a progressive rollout, one branch per increment. `foundatio
 holds only the foundation/skeleton/docs tasks (T-01…T-03); each later increment is stacked on the
 previous one (`feature/config-driven-sampling` → `feature/ammeter-adapter-layer` →
 `feature/measurement-sampler` → `feature/result-analysis-and-storage` → `feature/framework-wiring` →
-`feature/end-to-end-regression`). T-07 and T-08 share a branch because `RunResult` stores the statistics. Every increment is
+`feature/end-to-end-regression` → `feature/visualization`). T-07 and T-08 share a branch because
+`RunResult` stores the statistics. Every increment is
 regression-tested before the next begins, and nothing is pushed without approval.
 
 ## How to run
@@ -45,20 +46,37 @@ pip install -r requirements.txt
 python main.py                     # frozen demo: one reading from each ammeter; Ctrl-C to stop
 python -m src.testing              # framework CLI: measure all ammeters and save a JSON run
 python -m src.testing --ammeter entes --no-save
+python -m src.testing --no-visualize         # measure and archive without CSV/text/PNG output
 python -m unittest discover -s tests -v   # regression suite, run after every commit
 ```
 
-The framework CLI accepts `--config PATH`, `--ammeter NAME|all`, `--results-dir DIR` and `--no-save`.
-It prints a precision/stability table and returns exit status **0** (all measured), **1** (some
-ammeters failed; the rest were archived) or **2** (configuration/analysis/storage failure). It never
-edits `main.py`. A broken ammeter is reported with its name, port and cause and does not erase the
-other measurements. No reference meter exists, so the report never claims trueness; CIRCUTOR's raw
+The framework CLI accepts `--config PATH`, `--ammeter NAME|all`, `--results-dir DIR`, `--no-save` and
+`--no-visualize`. It prints a precision/stability table and returns exit status **0** (all measured),
+**1** (some ammeters failed; the rest were archived) or **2** (configuration/analysis/storage failure).
+It never edits `main.py`. A broken ammeter is reported with its name, port and cause and does not erase
+the other measurements. No reference meter exists, so the report never claims trueness; CIRCUTOR's raw
 values are V·s, not amperes.
 
-The regression suite currently has 143 tests (~2.1 s): 16 original fix tests, 5 skeleton tests,
+### Visualization (T-11)
+
+A default run writes, under `<results-dir>/visualizations/<run_id>/`:
+
+- `<ammeter>.csv` — `index,current` rows of the raw series, one file per ammeter (stdlib `csv`);
+- `summary.txt` — the eight precision/stability metrics per ammeter, errors, skip notes and the
+  "no trueness" disclaimer; the same table is printed to stdout;
+- `series.png` and `comparison.png` — **only if the optional `matplotlib` extra is importable**.
+  A missing or failing plot becomes a `Note:` in stdout and `summary.txt`, never a failed run.
+
+Settings live under `analysis.visualization` in our `src/testing/defaults.yaml` (`enabled: true`,
+`backend: csv`, `plot_types: [series, comparison]`, `directory: visualizations`). The frozen
+`config/config.yaml` keeps `enabled: true` and `plot_types: null`; nulls are treated as "unset", so
+our defaults apply. `enabled: false` in the config or `--no-visualize` on the CLI disables all output.
+`requirements.txt` is unchanged by this increment.
+
+The regression suite currently has 166 tests (~2.8 s): 16 original fix tests, 5 skeleton tests,
 5 config/sampling tests, 39 adapter tests, 13 sampler tests, 19 analysis/storage tests, 18 framework
-wiring tests, 12 CLI tests, 13 SUT contract tests and 3 system tests. The adapter tests run one shared
-contract suite against real emulators and the fake. Sampler tests use an injected clock, so timing
+wiring tests, 12 CLI tests, 13 SUT contract tests, 3 system tests and 23 visualization tests.
+The adapter tests run one shared contract suite against real emulators and the fake. Sampler tests use an injected clock, so timing
 tests finish in milliseconds. Storage tests write to temp directories and prove atomic writes leave
 no partial artifact. The framework tests inject fake adapters and one-shot connection doubles. The
 SUT contract tests cover documented value bounds, exact formula oracles from injected draws, the wire

@@ -28,7 +28,7 @@ Detail (oracle derivations, full 18 config cases, risks): `methodology/test-stra
 | [x] T-08 | Storage: new `storage.py`. Frozen `RunResult` JSON, unique ID, metadata, list/compare. | Two runs in one second differ; retrieval works; no partial artifacts. |
 | [x] T-09 | Wire it in `src/testing/`: real `run_test()`, new CLI entry point, typed errors, continue-on-failure. `main.py` stays frozen. | `python -m src.testing` runs YAML → artifact; one broken ammeter doesn't erase the other two. |
 | [x] T-10 | E2E + ~10 new L0 tests: `tests/`. L2/L3, clean-clone run. | All levels green twice; no unclassified tracebacks. |
-| [ ] T-11 | **BONUS** Visualization: CSV + text table; guarded matplotlib. | CSV written; missing plot package skips cleanly. |
+| [x] T-11 | **BONUS** Visualization: CSV + text table; guarded matplotlib. | CSV written; missing plot package skips cleanly. |
 | [ ] T-12 | **BONUS** Error simulation: faulty-adapter corpus. | Detection score x/7; false positives measured. |
 | [ ] T-13 | **BONUS** Comparison report: precision/stability from CV and drift. | No trueness claim; limitation stated. |
 | [ ] T-14 | Sample results + final docs: `docs/test_framework_README.md` (fix log + design decisions), spec → evidence map. | Deliverables 1–4 have committed artifacts. |

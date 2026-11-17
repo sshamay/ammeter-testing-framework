@@ -1,4 +1,4 @@
-# Framework-owned sampling defaults. The supplied config/config.yaml is read-only.
+# Framework-owned defaults. The supplied config/config.yaml is read-only.
 testing:
   sampling:
     measurements_count: 20
@@ -10,3 +10,10 @@ testing:
     retry:
       max_attempts: 2
       backoff_seconds: 0.05
+
+analysis:
+  visualization:
+    enabled: true
+    backend: csv
+    plot_types: [series, comparison]
+    directory: visualizations
