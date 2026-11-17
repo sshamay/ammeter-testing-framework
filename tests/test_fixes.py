@@ -204,17 +204,30 @@ class TestInterruptedRun(unittest.TestCase):
     """Fix 6: Ctrl-C stops the run with a message instead of a traceback."""
 
     def test_ctrl_c_exits_without_traceback(self):
-        process = subprocess.Popen(
-            [sys.executable, "main.py"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
+        # Windows has no POSIX SIGINT for a child: use a new process group and CTRL_BREAK_EVENT,
+        # which Python still turns into KeyboardInterrupt. POSIX keeps the ordinary SIGINT path.
+        if os.name == "nt":
+            process = subprocess.Popen(
+                [sys.executable, "main.py"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+            )
+            interrupt = signal.CTRL_BREAK_EVENT
+        else:
+            process = subprocess.Popen(
+                [sys.executable, "main.py"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+            interrupt = signal.SIGINT
         try:
             time.sleep(1.5)
             if process.poll() is not None:
                 self.skipTest("main.py finished before the interrupt could be sent")
-            process.send_signal(signal.SIGINT)
+            process.send_signal(interrupt)
             output, _ = process.communicate(timeout=20)
         finally:
             if process.poll() is None:
