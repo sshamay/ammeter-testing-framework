@@ -27,6 +27,14 @@ class ParseError(ProtocolError):
     """The reply could not be interpreted as a finite float."""
 
 
+class AnalysisError(MeasurementError):
+    """No valid statistics can be computed from a series."""
+
+
+class StorageError(MeasurementError):
+    """A result could not be written or read without corruption."""
+
+
 def describe(ammeter: str, port: Optional[int], host: str, cause: str) -> str:
     """Consistent, grep-friendly error text: ammeter, endpoint and cause."""
     return f"{ammeter}@{host}:{port}: {cause}"

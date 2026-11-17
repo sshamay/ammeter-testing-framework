@@ -24,8 +24,8 @@ Detail (oracle derivations, full 18 config cases, risks): `methodology/test-stra
 | [x] T-04 | Config validation + `resolve_sampling()` in new `src/testing/sampling.py`; framework-owned defaults in `src/testing/defaults.yaml` are merged over read-only `config.yaml` (its sampling values are `null`). Do not edit `config.py` or `config.yaml`. | 18 config cases green (appendix §4.2); errors before any socket opens; `git diff` shows no supplied file changed. |
 | [x] T-05 | Adapters: new `adapters/`. Three + fake, one shared contract suite; `open`/`read_current`/`close`, timeouts. | All four pass; no socket/thread left open. |
 | [x] T-06 | Sampler: new `sampler.py`. Count/frequency/duration precedence, injected clock, timeout, retry. | Timing tests deterministic, no `sleep()`; exact count. |
-| [ ] T-07 | Statistics: new `analysis.py`. Mean, median, stddev, min, max, CV, drift; n=1 and constant values. | Seeded/metamorphic tests exact; no `ZeroDivisionError`. |
-| [ ] T-08 | Storage: new `storage.py`. Frozen `RunResult` JSON, unique ID, metadata, list/compare. | Two runs in one second differ; retrieval works; no partial artifacts. |
+| [x] T-07 | Statistics: new `analysis.py`. Mean, median, stddev, min, max, CV, drift; n=1 and constant values. | Seeded/metamorphic tests exact; no `ZeroDivisionError`. |
+| [x] T-08 | Storage: new `storage.py`. Frozen `RunResult` JSON, unique ID, metadata, list/compare. | Two runs in one second differ; retrieval works; no partial artifacts. |
 | [ ] T-09 | Wire it in `src/testing/`: real `run_test()`, new CLI entry point, typed errors, continue-on-failure. `main.py` stays frozen. | `python -m src.testing` runs YAML → artifact; one broken ammeter doesn't erase the other two. |
 | [ ] T-10 | E2E + ~10 new L0 tests: `tests/`. L2/L3, clean-clone run. | All levels green twice; no unclassified tracebacks. |
 | [ ] T-11 | **BONUS** Visualization: CSV + text table; guarded matplotlib. | CSV written; missing plot package skips cleanly. |
