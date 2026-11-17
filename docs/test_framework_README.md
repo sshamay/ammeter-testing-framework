@@ -41,14 +41,21 @@ Run everything **from the repository root** — `CONFIG_PATH` is relative to it.
 
 ```sh
 python3 -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
+source .venv/bin/activate
 pip install -r requirements.txt
-python main.py                     # frozen demo: one reading from each ammeter; Ctrl-C to stop
-python -m src.testing              # framework CLI: measure all ammeters and save a JSON run
+python main.py
+python -m src.testing
 python -m src.testing --ammeter entes --no-save
-python -m src.testing --no-visualize         # measure and archive without CSV/text/PNG output
-python -m unittest discover -s tests -v   # regression suite, run after every commit
+python -m src.testing --no-visualize
+python -m unittest discover -s tests -v
+AMMETER_WRITE_SAMPLE=1 python -m unittest tests.test_sample_results
 ```
+
+On Windows activate with `.venv\Scripts\activate`. `python main.py` is the frozen one-reading demo
+(Ctrl-C to stop); `python -m src.testing` is the framework CLI that measures all ammeters and saves a
+JSON run; `--no-visualize` skips CSV/text/PNG output; `python -m unittest discover -s tests -v` is the
+regression suite run after every commit; the last command writes a local sample run under
+`results/sample/` (git-ignored).
 
 The framework CLI accepts `--config PATH`, `--ammeter NAME|all`, `--results-dir DIR`, `--no-save` and
 `--no-visualize`. It prints a precision/stability table and returns exit status **0** (all measured),
@@ -73,9 +80,25 @@ Settings live under `analysis.visualization` in our `src/testing/defaults.yaml` 
 our defaults apply. `enabled: false` in the config or `--no-visualize` on the CLI disables all output.
 `requirements.txt` is unchanged by this increment.
 
-The regression suite currently has 166 tests (~2.8 s): 16 original fix tests, 5 skeleton tests,
+### Sample results from a regular test run
+
+`tests/test_sample_results.py` starts the frozen emulators in threads (by importing `build_emulators`
+from `main.py` — the file is never edited) and calls `AmmeterTestFramework.run_test()` directly, so a
+**normal unittest run** produces the JSON artifact and the visualization files under `results/sample/`:
+
+```sh
+AMMETER_WRITE_SAMPLE=1 python -m unittest tests.test_sample_results
+```
+
+Without the env var the same test runs into a temp directory, keeping the regression suite
+read-only. All of `results/` is git-ignored, so generated artifacts are never committed.
+Note that `python -m src.testing` is a client: it needs emulator servers already listening on the
+configured ports; the test file starts them itself.
+
+The regression suite currently has 167 tests (~9 s): 16 original fix tests, 5 skeleton tests,
 5 config/sampling tests, 39 adapter tests, 13 sampler tests, 19 analysis/storage tests, 18 framework
-wiring tests, 12 CLI tests, 13 SUT contract tests, 3 system tests and 23 visualization tests.
+wiring tests, 12 CLI tests, 13 SUT contract tests, 3 system tests, 23 visualization tests and
+1 sample-result test.
 The adapter tests run one shared contract suite against real emulators and the fake. Sampler tests use an injected clock, so timing
 tests finish in milliseconds. Storage tests write to temp directories and prove atomic writes leave
 no partial artifact. The framework tests inject fake adapters and one-shot connection doubles. The
