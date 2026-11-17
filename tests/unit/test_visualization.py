@@ -32,7 +32,7 @@ from src.testing.visualization import (
     write_text_table,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 FROZEN_CONFIG = str(REPO_ROOT / "config" / "config.yaml")
 
 
