@@ -1,6 +1,6 @@
 # Test Framework — Fixes & Design Considerations
 
-**Status:** step 1 complete (make `main.py` work), framework skeleton unblocked. `main.py` starts the three emulators and receives one current reading from each.
+**Status:** core deliverable complete (T-01…T-10), with the visualization (T-11) and faulty-adapter corpus (T-12) bonuses merged. `main.py` starts the three emulators and receives one current reading from each; the framework adds config-driven sampling, statistics, atomic JSON archiving, visualization and fault detection without editing that supplied file.
 
 Per the assignment: use the existing ammeter emulation infrastructure; if there is an error in the code, fix it and explain the fix in the documentation. The original `README.md` is intentionally left unchanged; the deviations are recorded below.
 
