@@ -155,3 +155,20 @@ The root `README.md` is supplied by the exercise and is not modified. Its values
 | # | Decision | Rationale |
 |---|---|---|
 | 1 | Fault injection lives only in `tests/`. | Each faulty adapter violates one adapter contract; the production adapters and the frozen emulators never hear about them. The SUT stays untouched and the detection score measures whether our oracles are watching, not whether the devices are broken. |
+
+## Platform and version caveats
+
+The supplied emulators are frozen, so differences that originate there are documented and tested
+around rather than "fixed" by editing them.
+
+| Concern | Impact | Handling |
+|---|---|---|
+| Windows port reuse | `Ammeters/base_ammeter.py` sets `SO_REUSEADDR`, which does not mean the same thing on Windows as on Unix; a second server may bind where Unix would refuse. | Tests allocate free ports dynamically and start one server per port; the frozen emulator is unchanged. |
+| Ctrl-C | POSIX `SIGINT` is not a graceful interrupt for a Windows child process. | `tests/test_fixes.py` uses `CREATE_NEW_PROCESS_GROUP` + `CTRL_BREAK_EVENT` on Windows and `SIGINT` elsewhere. |
+| `tarfile` extraction filter | `extractall(filter="data")` needs Python 3.12+ (or a backported patch release). | `tests/test_end_to_end.py` validates archive members itself and uses plain `extractall`, so older interpreters work too. |
+| Timer resolution | Windows has a ~15.6 ms timer floor; tight timing assertions would flake. | Unit tests inject a fake clock; the two live timing checks use loose tolerances. |
+| Paths and encodings | Separators and default encodings differ between platforms. | Framework paths use `pathlib`, text I/O passes `encoding="utf-8"` and CSV uses `newline=""`. |
+| Dependencies | Plot extras must not be required. | PyYAML is the only required third-party package; matplotlib is imported behind a guard and skips cleanly. |
+
+Type hints deliberately use `typing.Tuple`/`Mapping` rather than newer built-in generic or union
+syntax, so the package imports on Python 3.10 through 3.14 (the dev interpreter is 3.14.6).
