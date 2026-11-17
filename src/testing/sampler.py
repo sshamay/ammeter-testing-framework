@@ -1,9 +1,12 @@
 """Turn a validated :class:`SamplingPlan` into a finite series of readings.
 
 Timing is injected so tests never wait on wall-clock time. The schedule is: take the first reading
-immediately, then sleep ``1 / frequency_hz`` between subsequent readings. A transient failure is
-retried within the same sample; a sample that fails every attempt raises its last typed error so the
-caller can report that ammeter and continue with the others.
+immediately, then sleep ``1 / frequency_hz`` between subsequent readings.
+
+Each reading owns its own connection: the emulators answer exactly one request and then close, so a
+batch cannot reuse one open socket. A transient failure is retried with a fresh connection within the
+same sample; a sample that fails every attempt raises its last typed error so the caller can report
+that ammeter and continue with the others.
 """
 
 import time
@@ -96,16 +99,12 @@ class Sampler:
         errors = []
         attempts = 0
 
-        self.adapter.open(timeout=self.settings.timeout)
-        try:
-            for index in range(self.plan.count):
-                if index:
-                    self.clock.sleep(interval)
-                value, used = self._read_with_retry(errors)
-                attempts += used
-                values.append(value)
-        finally:
-            self.adapter.close()
+        for index in range(self.plan.count):
+            if index:
+                self.clock.sleep(interval)
+            value, used = self._read_with_retry(errors)
+            attempts += used
+            values.append(value)
 
         return SampleSeries(
             ammeter=self.adapter.name,
@@ -118,6 +117,7 @@ class Sampler:
         used = 0
         for attempt in range(self.settings.max_attempts):
             used += 1
+            self.adapter.open(timeout=self.settings.timeout)
             try:
                 return self.adapter.read_current(), used
             except MeasurementError as error:
@@ -125,4 +125,6 @@ class Sampler:
                 if attempt + 1 == self.settings.max_attempts:
                     raise
                 self.clock.sleep(self.settings.backoff_seconds)
+            finally:
+                self.adapter.close()
         raise AssertionError("unreachable: max_attempts >= 1")
