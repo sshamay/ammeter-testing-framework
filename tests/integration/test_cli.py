@@ -24,7 +24,7 @@ from src.testing.visualization import VisualizationSettings
 from tests.emulator_helpers import free_port, start_emulator, wait_until_listening
 from tests.support import COMMANDS
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def canned_result(errors=()):

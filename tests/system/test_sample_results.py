@@ -7,7 +7,7 @@ By default the campaign runs into a temp directory, so the regression suite stay
 ``AMMETER_WRITE_SAMPLE=1`` to write the same artifacts under ``results/sample/`` for local inspection.
 All of ``results/`` is git-ignored, so no measurement output is ever committed:
 
-    AMMETER_WRITE_SAMPLE=1 python -m unittest tests.test_sample_results
+    AMMETER_WRITE_SAMPLE=1 python -m unittest tests.system.test_sample_results
 """
 
 import importlib.util
@@ -25,7 +25,7 @@ from src.testing.test_framework import AmmeterTestFramework
 from src.testing.visualization import visualize
 from tests.emulator_helpers import start_emulator, wait_until_listening
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = REPO_ROOT / "config" / "config.yaml"
 SAMPLE_DIR = REPO_ROOT / "results" / "sample"
 AMMETERS = ("circutor", "entes", "greenlee")
