@@ -1,5 +1,6 @@
 """T-09: CLI presentation, exit codes, and the real ``python -m src.testing`` entry point."""
 
+import importlib.util
 import io
 import subprocess
 import sys
@@ -19,6 +20,7 @@ from src.testing.analysis import compute_statistics
 from src.testing.cli import EXIT_FATAL, EXIT_OK, EXIT_PARTIAL, build_parser, format_summary, main
 from src.testing.errors import ConfigError
 from src.testing.storage import RunResult, list_runs, load_run
+from src.testing.visualization import VisualizationSettings
 from tests.emulator_helpers import free_port, start_emulator, wait_until_listening
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -59,6 +61,16 @@ class TestCLIParser(unittest.TestCase):
 
 
 class TestCLIMain(unittest.TestCase):
+    def setUp(self):
+        # These tests mock the framework, so there is no real config to derive visualization
+        # settings from. Disabling them keeps presentation unit tests off disk.
+        patcher = patch(
+            "src.testing.cli.settings_from_config",
+            return_value=VisualizationSettings(enabled=False),
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_exit_zero_when_every_ammeter_is_measured(self):
         with patch("src.testing.cli.AmmeterTestFramework") as framework:
             framework.return_value.run_test.return_value = canned_result()
@@ -195,6 +207,13 @@ class TestModuleEntryPoint(unittest.TestCase):
             self.assertEqual(data["config_snapshot"]["ammeters"]["entes"]["port"], ports["entes"])
             for name in COMMANDS:
                 self.assertEqual(len(data["samples"][name]), 3)
+
+            # The default CLI run also produces stdlib visualization artifacts in the same tree.
+            visual_dir = results_dir / "visualizations" / identifiers[0]
+            expected_files = {f"{name}.csv" for name in COMMANDS} | {"summary.txt"}
+            if importlib.util.find_spec("matplotlib") is not None:
+                expected_files |= {"series.png", "comparison.png"}
+            self.assertTrue(expected_files.issubset({path.name for path in visual_dir.iterdir()}))
 
             second = subprocess.run(
                 command, cwd=REPO_ROOT, capture_output=True, text=True, timeout=60
