@@ -38,6 +38,23 @@ ARTIFACT_KEYS = {
 STAT_KEYS = {"count", "mean", "median", "stddev", "min", "max", "cv", "drift"}
 
 
+def safe_extract(archive, destination):
+    """Extract our own ``git archive`` without tarfile's version-specific ``filter`` argument.
+
+    Python < 3.12 has no ``filter=``, and older patch releases of 3.10/3.11 lack its backport.
+    Validate the members ourselves (paths stay inside the destination, no links or devices) so
+    plain ``extractall`` is safe on every supported interpreter.
+    """
+    root = destination.resolve()
+    for member in archive.getmembers():
+        target = (destination / member.name).resolve()
+        if not target.is_relative_to(root):
+            raise ValueError(f"unsafe archive path: {member.name}")
+        if member.issym() or member.islnk() or member.isdev() or member.isfifo():
+            raise ValueError(f"unsupported archive entry: {member.name}")
+    archive.extractall(destination)
+
+
 def build_framework(config_path, results_dir, *, adapters=None, adapter_class=None):
     return AmmeterTestFramework(
         config_path,
@@ -124,7 +141,7 @@ class TestCleanExport(unittest.TestCase):
             export = Path(temp_dir) / "export"
             export.mkdir()
             with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
-                tar.extractall(export, filter="data")
+                safe_extract(tar, export)
 
             ports = {name: free_port() for name in COMMANDS}
             config = {
