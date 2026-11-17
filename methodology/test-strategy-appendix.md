@@ -781,7 +781,7 @@ bonus while keeping "minimize dependencies" literally true for the core.
 |---|---|---|
 | 1. Complete Python implementation | P1–P4 | code + this contract §3 |
 | 2. README with usage instructions | P6 | README "How to run", installed libraries, known deviations (§19 Q3) |
-| 3. Sample test results | P5 | `results/sample/` committed (needs a `.gitignore` exception — `results/` and `*.log` are ignored today) |
+| 3. Sample test results | P5 | generated locally under git-ignored `results/sample/` by `tests/test_sample_results.py`; never committed |
 | 4. Brief doc of design decisions | P0/P6 | `docs/test_framework_README.md` + decisions section of this file |
 | Bonus: error simulation | P5 | §10 faulty-adapter corpus + detection score |
 | Bonus: advanced visualization | P4 | §11 CSV/text default, optional matplotlib |
@@ -866,7 +866,7 @@ dynamically.
 - Suite runtime within a stated budget (target < 30 s; slow/E2E separable).
 - Zero unclassified tracebacks in any error-path test.
 - Every row of §4.1 covered by a test; every spec bullet in §12 has evidence.
-- One end-to-end run artifact committed as a sample.
+- One end-to-end run artifact generated locally under ignored `results/` (never committed).
 - **SUT change audit:** `git diff` against the supplied `Ammeters/` contains only fixes logged in §13.1
   with a reproduction — no test-only edits.
 

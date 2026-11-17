@@ -18,7 +18,7 @@ Detail (oracle derivations, full 18 config cases, risks): `methodology/test-stra
 
 | # | Task / files | Done when |
 |---|---|---|
-| [ ] T-01 | Freeze the decisions below. No code. | Decisions accepted. |
+| [x] T-01 | Freeze the decisions below. No code. | Decisions accepted. |
 | [x] T-02 | Unblock skeleton: `test_framework.py`, `logger.py`, `requirements.txt`. Add missing `Dict` import, logger handler/level/file, trim unused heavy deps (keep PyYAML). | Imports on 3.13 + 3.14; log line written; fresh venv installs. |
 | [x] T-03 | Document usage in `docs/test_framework_README.md` (do **not** touch root `README.md`): how to run, installed libs, real ports/commands, root-README deviations. `.gitignore` ignores all `results/` output. | Stranger can follow the docs verbatim; no measurement output is committed; root README unchanged in `git diff`. |
 | [x] T-04 | Config validation + `resolve_sampling()` in new `src/testing/sampling.py`; framework-owned defaults in `src/testing/defaults.yaml` are merged over read-only `config.yaml` (its sampling values are `null`). Do not edit `config.py` or `config.yaml`. | 18 config cases green (appendix §4.2); errors before any socket opens; `git diff` shows no supplied file changed. |
