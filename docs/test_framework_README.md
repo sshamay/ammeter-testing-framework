@@ -30,8 +30,8 @@ its own defaults (in `src/testing/defaults.yaml`) over it before validating. Any
 Work is delivered as a progressive rollout, one branch per increment. `foundation/skeleton-and-docs`
 holds only the foundation/skeleton/docs tasks (T-01…T-03); each later increment is stacked on the
 previous one (`feature/config-driven-sampling` → `feature/ammeter-adapter-layer` →
-`feature/measurement-sampler` → `feature/result-analysis-and-storage` → `feature/framework-wiring`).
-T-07 and T-08 share a branch because `RunResult` stores the statistics. Every increment is
+`feature/measurement-sampler` → `feature/result-analysis-and-storage` → `feature/framework-wiring` →
+`feature/end-to-end-regression`). T-07 and T-08 share a branch because `RunResult` stores the statistics. Every increment is
 regression-tested before the next begins, and nothing is pushed without approval.
 
 ## How to run
@@ -55,13 +55,16 @@ edits `main.py`. A broken ammeter is reported with its name, port and cause and 
 other measurements. No reference meter exists, so the report never claims trueness; CIRCUTOR's raw
 values are V·s, not amperes.
 
-The regression suite currently has 127 tests (~2.0 s): 16 original fix tests, 5 skeleton tests,
+The regression suite currently has 143 tests (~2.1 s): 16 original fix tests, 5 skeleton tests,
 5 config/sampling tests, 39 adapter tests, 13 sampler tests, 19 analysis/storage tests, 18 framework
-wiring tests and 12 CLI tests. The adapter tests run one shared contract suite against real emulators
-and the fake. Sampler tests use an injected clock, so timing tests finish in milliseconds. Storage
-tests write to temp directories and prove atomic writes leave no partial artifact. The framework
-tests inject fake adapters and one-shot connection doubles; one CLI test starts the three real
-emulators in threads and runs `python -m src.testing` in a subprocess to prove YAML → artifact.
+wiring tests, 12 CLI tests, 13 SUT contract tests and 3 system tests. The adapter tests run one shared
+contract suite against real emulators and the fake. Sampler tests use an injected clock, so timing
+tests finish in milliseconds. Storage tests write to temp directories and prove atomic writes leave
+no partial artifact. The framework tests inject fake adapters and one-shot connection doubles. The
+SUT contract tests cover documented value bounds, exact formula oracles from injected draws, the wire
+round-trip and the client success path. System tests check the artifact's golden key shape, prove no
+connection/thread leak across a batch, and run `python -m src.testing` twice from a clean `git
+archive HEAD` export with stderr asserted empty — no unclassified tracebacks.
 
 ## Deviations from the original README
 

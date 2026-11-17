@@ -184,6 +184,7 @@ class TestModuleEntryPoint(unittest.TestCase):
                 command, cwd=REPO_ROOT, capture_output=True, text=True, timeout=60
             )
             self.assertEqual(first.returncode, 0, first.stderr + first.stdout)
+            self.assertEqual(first.stderr, "", "unclassified traceback on stderr")
             self.assertIn("3 of 3 ammeters measured", first.stdout)
 
             identifiers = list_runs(str(results_dir))
@@ -199,6 +200,7 @@ class TestModuleEntryPoint(unittest.TestCase):
                 command, cwd=REPO_ROOT, capture_output=True, text=True, timeout=60
             )
             self.assertEqual(second.returncode, 0, second.stderr + second.stdout)
+            self.assertEqual(second.stderr, "", "unclassified traceback on stderr")
             self.assertEqual(len(list_runs(str(results_dir))), 2)
             self.assertEqual(len(set(identifiers + tuple(list_runs(str(results_dir))))), 2)
 
