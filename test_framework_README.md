@@ -114,10 +114,11 @@ read-only. All of `results/` is git-ignored, so generated artifacts are never co
 Note that `python -m src.testing` is a client: it needs emulator servers already listening on the
 configured ports; the test file starts them itself.
 
-The regression suite currently has 169 tests (~9 s): 16 original fix tests, 5 skeleton tests,
-5 config/sampling tests, 39 adapter tests, 13 sampler tests, 19 analysis/storage tests, 18 framework
-wiring tests, 12 CLI tests, 13 SUT contract tests, 3 system tests, 23 visualization tests,
-1 sample-result test and 2 fault-corpus tests.
+The regression suite currently has 167 tests (~9 s): 5 skeleton tests, 10 config/sampling tests,
+43 adapter tests, 13 sampler tests, 19 analysis/storage tests, 19 framework wiring tests,
+12 CLI tests, 16 SUT contract tests, 4 system tests, 23 visualization tests, 1 sample-result test
+and 2 fault-corpus tests. The fix regressions formerly in `tests/test_fixes.py` were redistributed
+to the modules that own them when that file was removed.
 The adapter tests run one shared contract suite against real emulators and the fake. Sampler tests use an injected clock, so timing
 tests finish in milliseconds. Storage tests write to temp directories and prove atomic writes leave
 no partial artifact. The framework tests inject fake adapters and one-shot connection doubles. The
