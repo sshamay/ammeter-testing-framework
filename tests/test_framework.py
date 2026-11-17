@@ -233,6 +233,15 @@ class TestContinueOnFailure(FrameworkCase):
         self.assertEqual(len(result.errors), 2)
         self.assertEqual(set(result.statistics), {"entes"})
 
+    def test_unexpected_adapter_exception_is_flagged_in_the_report(self):
+        scripts = dict(GOOD)
+        scripts["circutor"] = (ValueError("circutor broke"),)
+        result = self.framework(scripts).run_test(save=False)
+
+        self.assertEqual(len(result.errors), 1)
+        self.assertTrue(result.errors[0].startswith("UNEXPECTED: "))
+        self.assertIn("ValueError: circutor broke", result.errors[0])
+
     def test_recovered_transient_does_not_fail_the_run(self):
         scripts = dict(GOOD)
         scripts["entes"] = (TransportError("transient"), 5.0, 5.1, 4.9)

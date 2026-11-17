@@ -79,8 +79,9 @@ class AmmeterTestFramework:
 
         ``ammeter_type`` is a name from the config's ``ammeters`` section, or ``"all"`` (the default).
         A per-ammeter failure is added to ``result.errors`` and the loop continues, so a broken device
-        cannot delete the other measurements. Configuration, analysis and storage failures propagate
-        as typed errors — they are not per-ammeter faults.
+        cannot delete the other measurements. Errors from untyped exceptions are prefixed
+        ``UNEXPECTED:`` to make adapter or framework bugs visible in the report. Configuration,
+        analysis and storage failures propagate as typed errors — they are not per-ammeter faults.
         """
         selected = self._select(ammeter_type)
         try:
@@ -93,8 +94,14 @@ class AmmeterTestFramework:
         for name, adapter in selected.items():
             try:
                 series = Sampler(adapter, plan, self.settings, self.clock).run()
-            except Exception as error:  # a dead ammeter must not stop the others
-                errors.append(format_failure(name, adapter, error))
+            except Exception as error:
+                # One dead ammeter must not stop the others. A typed measurement error already
+                # describes the fault; a raw exception points at an adapter or framework bug, so
+                # mark it as UNEXPECTED instead of letting it masquerade as a device failure.
+                text = format_failure(name, adapter, error)
+                if not isinstance(error, (MeasurementError, OSError)):
+                    text = f"UNEXPECTED: {text}"
+                errors.append(text)
                 continue
             samples[name] = series.values
 
