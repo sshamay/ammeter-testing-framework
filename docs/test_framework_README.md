@@ -44,9 +44,10 @@ python main.py                     # one reading from each ammeter; Ctrl-C to st
 python -m unittest discover -s tests -v   # regression suite, run after every commit
 ```
 
-The regression suite currently has 21 tests (~1.6 s): 16 original fix tests plus 5 skeleton tests
-(`tests/test_skeleton.py`) that guard the `Dict` import, the logger writing a real file, and the
-minimal dependency list.
+The regression suite currently has 65 tests (~1.6 s): 16 original fix tests, 5 skeleton tests
+(`Dict` import, logger file, minimal dependencies), 5 config/sampling tests, and 39 adapter tests.
+The adapter tests run one shared contract suite against all three real emulators and the fake, and
+also cover typed transport/protocol/parse errors, timeouts, socket close and thread leaks.
 
 ## Deviations from the original README
 
