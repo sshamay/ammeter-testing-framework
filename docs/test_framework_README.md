@@ -44,12 +44,13 @@ python main.py                     # one reading from each ammeter; Ctrl-C to st
 python -m unittest discover -s tests -v   # regression suite, run after every commit
 ```
 
-The regression suite currently has 78 tests (~1.6 s): 16 original fix tests, 5 skeleton tests
-(`Dict` import, logger file, minimal dependencies), 5 config/sampling tests, 39 adapter tests and
-13 sampler tests. The adapter tests run one shared contract suite against all three real emulators
-and the fake, and also cover typed transport/protocol/parse errors, timeouts, socket close and thread
-leaks. The sampler tests use an injected clock, so the whole timing suite finishes in milliseconds
-and never waits on wall-clock time.
+The regression suite currently has 97 tests (~1.6 s): 16 original fix tests, 5 skeleton tests
+(`Dict` import, logger file, minimal dependencies), 5 config/sampling tests, 39 adapter tests,
+13 sampler tests and 19 analysis/storage tests. The adapter tests run one shared contract suite
+against all three real emulators and the fake, and cover typed errors, timeouts and leaks. The
+sampler tests use an injected clock, so timing tests finish in milliseconds and never wait on
+wall-clock time. The storage tests write to temp directories and prove atomic writes leave no
+partial artifact.
 
 ## Deviations from the original README
 
