@@ -15,13 +15,9 @@ from Ammeters.Entes_Ammeter import EntesAmmeter
 from Ammeters.Greenlee_Ammeter import GreenleeAmmeter
 from Ammeters.client import request_current_from_ammeter
 from src.utils.Utils import generate_random_float
-from tests.emulator_helpers import free_port, start_emulator, wait_until_listening
+from tests.emulator_helpers import ask, free_port, start_emulator, wait_until_listening
 
-
-def ask(port: int, command: bytes, timeout: float = 3.0) -> bytes:
-    with socket.create_connection(("localhost", port), timeout=timeout) as connection:
-        connection.sendall(command)
-        return connection.recv(1024)
+GREENLEE_COMMAND = b"MEASURE_GREENLEE -get_measurement"
 
 
 def record_draws(original, drawn):
@@ -33,6 +29,30 @@ def record_draws(original, drawn):
         return value
 
     return record
+
+
+class TestUnknownCommandIsReported(unittest.TestCase):
+    """An unrecognised command gets an explicit error, not silence."""
+
+    def setUp(self):
+        self.port = free_port()
+        start_emulator(GreenleeAmmeter(self.port))
+        self.assertTrue(wait_until_listening(self.port))
+
+    def test_unknown_command_returns_error_marker(self):
+        self.assertEqual(ask(self.port, b"MEASURE_GREENLEE"), b"ERR_UNKNOWN_COMMAND")
+
+    def test_known_command_returns_a_number(self):
+        reply = ask(self.port, GREENLEE_COMMAND)
+        self.assertTrue(reply)
+        self.assertIsInstance(float(reply), float)
+
+    def test_client_prints_error_instead_of_measurement(self):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            request_current_from_ammeter(self.port, b"MEASURE_GREENLEE")
+        self.assertIn("Error from port", output.getvalue())
+        self.assertNotIn("Received current measurement", output.getvalue())
 
 
 class TestMeasurementBounds(unittest.TestCase):

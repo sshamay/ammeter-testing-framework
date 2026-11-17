@@ -16,13 +16,26 @@ from Ammeters.Circutor_Ammeter import CircutorAmmeter
 from Ammeters.Entes_Ammeter import EntesAmmeter
 from Ammeters.Greenlee_Ammeter import GreenleeAmmeter
 
-from tests.emulator_helpers import free_port, start_emulator, wait_until_listening
+from main import build_emulators
+from tests.emulator_helpers import ask, free_port, start_emulator, wait_until_listening
 from src.testing.adapters import FakeAmmeterAdapter, SocketAmmeterAdapter, build_adapters
 from src.testing.errors import ConfigError, ParseError, ProtocolError, SampleTimeout, TransportError
 from src.utils.config import load_config
 
 CONFIG_PATH = "config/config.yaml"
 CREATE_CONNECTION = "src.testing.adapters.socket_adapter.socket.create_connection"
+GREENLEE_COMMAND = b"MEASURE_GREENLEE -get_measurement"
+
+
+def leave_port_in_time_wait(port: int) -> None:
+    """Serve one connection and close it server-side, leaving the port in TIME_WAIT."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("localhost", port))
+        listener.listen()
+        client = socket.create_connection(("localhost", port))
+        served, _ = listener.accept()
+        served.close()
+        client.close()
 
 
 class AdapterContractMixin:
@@ -233,6 +246,58 @@ class TestNoThreadLeak(unittest.TestCase):
             with adapter:
                 adapter.read_current()
         self.assertEqual(threading.active_count(), before)
+
+
+class TestPortStaysReusable(unittest.TestCase):
+    """A port left in TIME_WAIT can still be bound by an emulator."""
+
+    def test_emulator_starts_on_port_left_in_time_wait(self):
+        port = free_port()
+        leave_port_in_time_wait(port)
+
+        probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            probe.bind(("localhost", port))
+        except OSError:
+            blocked = True
+        else:
+            blocked = False
+        finally:
+            probe.close()
+        if not blocked:
+            self.skipTest("this platform does not block rebinding after TIME_WAIT")
+
+        start_emulator(GreenleeAmmeter(port))
+        self.assertTrue(
+            wait_until_listening(port),
+            "emulator failed to bind a port still in TIME_WAIT",
+        )
+        self.assertIsInstance(float(ask(port, GREENLEE_COMMAND)), float)
+
+
+class TestCommandsMatchEmulators(unittest.TestCase):
+    """The commands the framework sends are the ones the emulators accept."""
+
+    def setUp(self):
+        self.config = load_config(CONFIG_PATH)
+
+    def test_truncated_command_is_rejected_by_each_emulator(self):
+        """The old client sent only the first word of the command; that must not match."""
+        emulators = build_emulators(self.config)
+        for name, emulator in emulators.items():
+            truncated = self.config["ammeters"][name]["command"].split()[0].encode("utf-8")
+            self.assertNotEqual(truncated, emulator.get_current_command, name)
+
+    def test_ports_come_from_config(self):
+        port = free_port()
+        self.config["ammeters"]["greenlee"]["port"] = port
+        emulators = build_emulators(self.config)
+        self.assertEqual(emulators["greenlee"].port, port)
+
+    def test_config_command_drift_stops_startup(self):
+        self.config["ammeters"]["circutor"]["command"] = "MEASURE_CIRCUTOR -get_measurement"
+        with self.assertRaises(SystemExit):
+            build_emulators(self.config)
 
 
 class TestFakeAdapterExtras(unittest.TestCase):

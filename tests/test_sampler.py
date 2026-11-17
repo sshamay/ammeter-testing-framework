@@ -14,21 +14,7 @@ from src.testing.adapters import FakeAmmeterAdapter
 from src.testing.errors import ConfigError, SampleTimeout, TransportError
 from src.testing.sampler import Sampler, SamplingSettings, load_sampler_settings
 from src.testing.sampling import resolve_sampling
-
-
-class FakeClock:
-    """Records waits instead of performing them."""
-
-    def __init__(self):
-        self.now_value = 0.0
-        self.sleeps = []
-
-    def now(self) -> float:
-        return self.now_value
-
-    def sleep(self, seconds: float) -> None:
-        self.sleeps.append(seconds)
-        self.now_value += seconds
+from tests.support import FakeClock
 
 
 def plan(count=None, duration=None, frequency=None):

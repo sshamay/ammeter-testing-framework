@@ -5,12 +5,16 @@ Run from the repository root:
     python -m unittest discover -s tests -v
 """
 
+import os
+import tempfile
 import unittest
 from unittest.mock import patch
 
 from src.testing.errors import ConfigError
 from src.testing.sampling import SamplingPlan, load_sampling_plan, resolve_sampling
 from src.utils.config import load_config
+
+CONFIG_PATH = "config/config.yaml"
 
 
 def sampling(count=None, duration=None, frequency=None, ceiling=None):
@@ -88,6 +92,47 @@ class TestResolveSampling(unittest.TestCase):
         self.assertEqual(plan.count, 20)
         self.assertAlmostEqual(plan.frequency_hz, 10.0)
         self.assertAlmostEqual(plan.duration_seconds, 2.0)
+
+
+class TestLoadConfigErrors(unittest.TestCase):
+    """load_config explains bad input instead of raising raw tracebacks."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+
+    def path(self, name: str) -> str:
+        return os.path.join(self.temp_dir.name, name)
+
+    def write(self, name: str, content: str) -> str:
+        path = self.path(name)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return path
+
+    def test_missing_file(self):
+        with self.assertRaises(FileNotFoundError):
+            load_config(self.path("missing.yaml"))
+
+    def test_invalid_yaml(self):
+        path = self.write("broken.yaml", "ammeters:\n  greenlee: {port: 5001\n")
+        with self.assertRaises(ValueError):
+            load_config(path)
+
+    def test_empty_file(self):
+        path = self.write("empty.yaml", "")
+        with self.assertRaises(ValueError):
+            load_config(path)
+
+    def test_non_mapping_file(self):
+        path = self.write("list.yaml", "- greenlee\n- entes\n")
+        with self.assertRaises(ValueError):
+            load_config(path)
+
+    def test_valid_file_returns_mapping(self):
+        config = load_config(CONFIG_PATH)
+        self.assertIsInstance(config, dict)
+        self.assertEqual(set(config["ammeters"]), {"greenlee", "entes", "circutor"})
 
 
 if __name__ == "__main__":

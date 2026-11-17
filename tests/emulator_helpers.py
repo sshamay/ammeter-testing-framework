@@ -32,3 +32,10 @@ def start_emulator(emulator) -> None:
     """Run an emulator server in a daemon thread; it never stops on its own."""
     with redirect_stdout(io.StringIO()):
         threading.Thread(target=emulator.start_server, daemon=True).start()
+
+
+def ask(port: int, command: bytes, timeout: float = 3.0) -> bytes:
+    """Send one command to a live emulator and return its raw reply."""
+    with socket.create_connection(("localhost", port), timeout=timeout) as connection:
+        connection.sendall(command)
+        return connection.recv(1024)
