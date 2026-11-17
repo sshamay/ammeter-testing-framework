@@ -12,15 +12,16 @@ import typing
 import unittest
 import uuid
 
+from src.testing.storage import RunResult
 from src.testing.test_framework import AmmeterTestFramework
 from src.utils.logger import TestLogger
 
 
 class TestFrameworkSkeleton(unittest.TestCase):
     def test_run_test_annotation_resolves(self):
-        """Python 3.14 defers annotations; force evaluation so a missing Dict import is caught."""
+        """Deferred annotations must resolve: the stub's Dict is now a typed RunResult."""
         hints = typing.get_type_hints(AmmeterTestFramework.run_test)
-        self.assertIs(hints["return"], typing.Dict)
+        self.assertIs(hints["return"], RunResult)
 
     def test_framework_can_be_constructed(self):
         framework = AmmeterTestFramework()
