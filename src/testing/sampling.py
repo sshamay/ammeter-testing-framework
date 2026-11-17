@@ -123,12 +123,17 @@ def _load_defaults() -> Mapping[str, Any]:
     return defaults["testing"]["sampling"]
 
 
-def load_sampling_plan(config_path: str = "config/config.yaml") -> SamplingPlan:
-    """Merge framework defaults over the supplied config, then resolve the plan."""
+def load_sampling_config(config_path: str = "config/config.yaml") -> Mapping[str, Any]:
+    """The frozen config merged over our defaults, with null values treated as unset."""
     config = load_config(config_path)
     user_sampling = (config.get("testing") or {}).get("sampling") or {}
     merged = dict(_load_defaults())
     for key, value in user_sampling.items():
         if value is not None:
             merged[key] = value
-    return resolve_sampling(merged)
+    return merged
+
+
+def load_sampling_plan(config_path: str = "config/config.yaml") -> SamplingPlan:
+    """Merge framework defaults over the supplied config, then resolve the plan."""
+    return resolve_sampling(load_sampling_config(config_path))
