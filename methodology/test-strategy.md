@@ -27,7 +27,7 @@ Detail (oracle derivations, full 18 config cases, risks): `methodology/test-stra
 | [x] T-07 | Statistics: new `analysis.py`. Mean, median, stddev, min, max, CV, drift; n=1 and constant values. | Seeded/metamorphic tests exact; no `ZeroDivisionError`. |
 | [x] T-08 | Storage: new `storage.py`. Frozen `RunResult` JSON, unique ID, metadata, list/compare. | Two runs in one second differ; retrieval works; no partial artifacts. |
 | [x] T-09 | Wire it in `src/testing/`: real `run_test()`, new CLI entry point, typed errors, continue-on-failure. `main.py` stays frozen. | `python -m src.testing` runs YAML → artifact; one broken ammeter doesn't erase the other two. |
-| [ ] T-10 | E2E + ~10 new L0 tests: `tests/`. L2/L3, clean-clone run. | All levels green twice; no unclassified tracebacks. |
+| [x] T-10 | E2E + ~10 new L0 tests: `tests/`. L2/L3, clean-clone run. | All levels green twice; no unclassified tracebacks. |
 | [ ] T-11 | **BONUS** Visualization: CSV + text table; guarded matplotlib. | CSV written; missing plot package skips cleanly. |
 | [ ] T-12 | **BONUS** Error simulation: faulty-adapter corpus. | Detection score x/7; false positives measured. |
 | [ ] T-13 | **BONUS** Comparison report: precision/stability from CV and drift. | No trueness claim; limitation stated. |
@@ -120,11 +120,11 @@ Determinism depends on the setup, not the SUT:
 
 ## Done
 
-- [ ] `python main.py` still works unchanged, and the framework CLI (`python -m src.testing`) works from a clean clone, twice.
-- [ ] All spec capabilities have a test and a committed sample artifact.
-- [ ] Error paths raise typed errors; no silent "No data received".
-- [ ] `git diff` on `Ammeters/` contains only fixes already logged — no test-only edits.
-- [ ] No push without explicit approval.
+- [x] `python main.py` still works unchanged, and the framework CLI (`python -m src.testing`) works from a clean clone, twice.
+- [ ] All spec capabilities have a test and a committed sample artifact (sample artifacts: T-14).
+- [x] Error paths raise typed errors; no silent "No data received".
+- [x] `git diff` on `Ammeters/` contains only fixes already logged — no test-only edits.
+- [x] No push without explicit approval.
 
 Document, don't fix: global RNG reseed; server blocking `recv` / no shutdown / daemon threads; emulator
 `print` output; CIRCUTOR V·s units; Python 3.14 deferring annotations (CI needs 3.13). None fails a
