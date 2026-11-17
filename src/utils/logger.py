@@ -19,9 +19,20 @@ class TestLogger:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         log_file = f"{log_dir}/{timestamp}_{self._test_name}.log"
 
-        # הגדרת הלוגר
+        # הגדרת הלוגר: handler + level + formatter, אחרת שום שורה לא נכתבת לקובץ
         logger = logging.getLogger(f"test_{self._test_name}")
+        for handler in logger.handlers[:]:
+            logger.removeHandler(handler)
+            handler.close()
+        logger.setLevel(logging.INFO)
+        logger.propagate = False
 
+        file_handler = logging.FileHandler(log_file, encoding="utf-8")
+        file_handler.setLevel(logging.INFO)
+        file_handler.setFormatter(
+            logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+        )
+        logger.addHandler(file_handler)
 
         return logger
 

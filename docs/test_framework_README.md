@@ -1,8 +1,59 @@
 # Test Framework — Fixes & Design Considerations
 
-**Status:** step 1 of the exercise — make `main.py` work. `main.py` now starts the three emulators and receives one current reading from each.
+**Status:** step 1 complete (make `main.py` work), framework skeleton unblocked. `main.py` starts the three emulators and receives one current reading from each.
 
-Per the assignment: use the existing ammeter emulation infrastructure; if there is an error in the code, fix it and explain the fix in the documentation.
+Per the assignment: use the existing ammeter emulation infrastructure; if there is an error in the code, fix it and explain the fix in the documentation. The original `README.md` is intentionally left unchanged; the deviations are recorded below.
+
+## Environment and installed libraries
+
+| Item | Value |
+|---|---|
+| Interpreter used | Python 3.14.6 (dev virtualenv `.venv/`) |
+| Install command | `pip install -r requirements.txt` |
+| Libraries installed | **PyYAML 6.0.3 only** — needed by `src/utils/config.py` for `config/config.yaml` |
+| Everything else | Python standard library: `socket`, `threading`, `statistics`, `json`, `logging`, `csv`, `unittest` |
+| Removed from `requirements.txt` | `numpy`, `scipy`, `seaborn`, `pandas`, `matplotlib` — none was imported anywhere. The spec asks to minimise dependencies. |
+| Optional, not installed | `matplotlib` is kept as a commented line for the guarded visualization import (task T-11). If it is absent, plotting is skipped cleanly. |
+
+Verified: a fresh virtualenv created from `requirements.txt` alone can import `yaml` and `AmmeterTestFramework`.
+
+## Scope of changes
+
+| Frozen supplied files (read-only) | Framework / our files |
+|---|---|
+| `Ammeters/*` (emulators and client), `main.py`, `config/config.yaml`, root `README.md` | `src/testing/*`, `src/utils/logger.py`, new files under `tests/`, `requirements.txt` |
+
+The supplied `config/config.yaml` has `null` sampling values. We do not edit it: the framework merges
+its own defaults (in `src/testing/defaults.yaml`) over it before validating. Any future change to
+`requirements.txt` is recorded in the table above.
+
+## How to run
+
+Run everything **from the repository root** — `CONFIG_PATH` is relative to it.
+
+```sh
+python3 -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+python main.py                     # one reading from each ammeter; Ctrl-C to stop
+python -m unittest discover -s tests -v   # regression suite, run after every commit
+```
+
+The regression suite currently has 21 tests (~1.6 s): 16 original fix tests plus 5 skeleton tests
+(`tests/test_skeleton.py`) that guard the `Dict` import, the logger writing a real file, and the
+minimal dependency list.
+
+## Deviations from the original README
+
+The root `README.md` is supplied by the exercise and is not modified. Its values differ from the code:
+
+| Topic | Root README says | Actual code / config |
+|---|---|---|
+| Greenlee port | 5000 | 5001 (5000 is occupied by macOS ControlCenter) |
+| ENTES port | 5001 | 5002 |
+| CIRCUTOR port | 5002 | 5003 |
+| CIRCUTOR command | `MEASURE_CIRCUTOR -get_measurement` | `MEASURE_CIRCUTOR -get_measurement -current` |
+| `examples/run_tests.py` | present | documented as unusable ("don't use it"); not part of the solution |
 
 ## Fixes
 
