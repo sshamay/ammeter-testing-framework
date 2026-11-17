@@ -4,9 +4,13 @@ Goal: one API for three ammeters → configurable sampling → statistics → ar
 IDs → comparison. Bonus: error simulation, visualization, config-driven setup. Deliver: code, usage
 docs, sample results, design notes. Graded on structure, flexibility, error handling, reporting, reuse.
 
-**The original `README.md` is not modified.** Its ports/commands are inaccurate; we record the
-deviations in `docs/test_framework_README.md` instead of editing it. Same for `.gitignore` — only the
-sample-artifact exception is added there.
+**Change scope (frozen supplied files):** `Ammeters/` (all emulators and client), `main.py`,
+`config/config.yaml`, root `README.md` — read-only. Its inaccurate ports/commands are recorded as
+deviations in `docs/test_framework_README.md`, not fixed.
+
+**Ours:** `src/testing/*`, `src/utils/logger.py`, new files under `tests/`, and `requirements.txt` —
+every dependency change must be documented in `docs/test_framework_README.md`. `src/utils/config.py`
+is also left alone: validation and sampling resolution go in new `src/testing/` modules.
 
 Detail (oracle derivations, full 18 config cases, risks): `methodology/test-strategy-appendix.md`.
 
@@ -17,12 +21,12 @@ Detail (oracle derivations, full 18 config cases, risks): `methodology/test-stra
 | [ ] T-01 | Freeze the decisions below. No code. | Decisions accepted. |
 | [x] T-02 | Unblock skeleton: `test_framework.py`, `logger.py`, `requirements.txt`. Add missing `Dict` import, logger handler/level/file, trim unused heavy deps (keep PyYAML). | Imports on 3.13 + 3.14; log line written; fresh venv installs. |
 | [x] T-03 | Document usage in `docs/test_framework_README.md` (do **not** touch root `README.md`): how to run, installed libs, real ports/commands, root-README deviations. `.gitignore`: add `!results/sample/` exception. | Stranger can follow the docs verbatim; samples can be committed; root README unchanged in `git diff`. |
-| [ ] T-04 | Config validation + `resolve_sampling()`: `config.py`, new `sampling.py`. | 18 config cases green (appendix §4.2); errors before any socket opens. |
+| [ ] T-04 | Config validation + `resolve_sampling()` in new `src/testing/sampling.py`; framework-owned defaults in `src/testing/defaults.yaml` are merged over read-only `config.yaml` (its sampling values are `null`). Do not edit `config.py` or `config.yaml`. | 18 config cases green (appendix §4.2); errors before any socket opens; `git diff` shows no supplied file changed. |
 | [ ] T-05 | Adapters: new `adapters/`. Three + fake, one shared contract suite; `open`/`read_current`/`close`, timeouts. | All four pass; no socket/thread left open. |
 | [ ] T-06 | Sampler: new `sampler.py`. Count/frequency/duration precedence, injected clock, timeout, retry. | Timing tests deterministic, no `sleep()`; exact count. |
 | [ ] T-07 | Statistics: new `analysis.py`. Mean, median, stddev, min, max, CV, drift; n=1 and constant values. | Seeded/metamorphic tests exact; no `ZeroDivisionError`. |
 | [ ] T-08 | Storage: new `storage.py`. Frozen `RunResult` JSON, unique ID, metadata, list/compare. | Two runs in one second differ; retrieval works; no partial artifacts. |
-| [ ] T-09 | Wire it: `test_framework.py`, `main.py`. Real `run_test()`, CLI, typed errors, continue-on-failure. | YAML → artifact; one broken ammeter doesn't erase the other two. |
+| [ ] T-09 | Wire it in `src/testing/`: real `run_test()`, new CLI entry point, typed errors, continue-on-failure. `main.py` stays frozen. | `python -m src.testing` runs YAML → artifact; one broken ammeter doesn't erase the other two. |
 | [ ] T-10 | E2E + ~10 new L0 tests: `tests/`. L2/L3, clean-clone run. | All levels green twice; no unclassified tracebacks. |
 | [ ] T-11 | **BONUS** Visualization: CSV + text table; guarded matplotlib. | CSV written; missing plot package skips cleanly. |
 | [ ] T-12 | **BONUS** Error simulation: faulty-adapter corpus. | Detection score x/7; false positives measured. |
@@ -116,7 +120,7 @@ Determinism depends on the setup, not the SUT:
 
 ## Done
 
-- [ ] `python main.py` and `run_test()` work from a clean clone, twice.
+- [ ] `python main.py` still works unchanged, and the framework CLI (`python -m src.testing`) works from a clean clone, twice.
 - [ ] All spec capabilities have a test and a committed sample artifact.
 - [ ] Error paths raise typed errors; no silent "No data received".
 - [ ] `git diff` on `Ammeters/` contains only fixes already logged — no test-only edits.

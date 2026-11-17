@@ -17,6 +17,16 @@ Per the assignment: use the existing ammeter emulation infrastructure; if there 
 
 Verified: a fresh virtualenv created from `requirements.txt` alone can import `yaml` and `AmmeterTestFramework`.
 
+## Scope of changes
+
+| Frozen supplied files (read-only) | Framework / our files |
+|---|---|
+| `Ammeters/*` (emulators and client), `main.py`, `config/config.yaml`, root `README.md` | `src/testing/*`, `src/utils/logger.py`, new files under `tests/`, `requirements.txt` |
+
+The supplied `config/config.yaml` has `null` sampling values. We do not edit it: the framework merges
+its own defaults (in `src/testing/defaults.yaml`) over it before validating. Any future change to
+`requirements.txt` is recorded in the table above.
+
 ## How to run
 
 Run everything **from the repository root** — `CONFIG_PATH` is relative to it.
