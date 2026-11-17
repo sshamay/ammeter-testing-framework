@@ -31,8 +31,9 @@ Work is delivered as a progressive rollout, one branch per increment. `foundatio
 holds only the foundation/skeleton/docs tasks (T-01…T-03); each later increment is stacked on the
 previous one (`feature/config-driven-sampling` → `feature/ammeter-adapter-layer` →
 `feature/measurement-sampler` → `feature/result-analysis-and-storage` → `feature/framework-wiring` →
-`feature/end-to-end-regression` → `feature/visualization`). T-07 and T-08 share a branch because
-`RunResult` stores the statistics. Every increment is
+`feature/end-to-end-regression` → `feature/visualization` → `test/sample-results-run` →
+`feature/faulty-adapter-corpus`). T-07 and T-08 share a branch because `RunResult` stores the
+statistics. Every increment is
 regression-tested before the next begins, and nothing is pushed without approval.
 
 ## How to run
@@ -80,6 +81,24 @@ Settings live under `analysis.visualization` in our `src/testing/defaults.yaml` 
 our defaults apply. `enabled: false` in the config or `--no-visualize` on the CLI disables all output.
 `requirements.txt` is unchanged by this increment.
 
+### Faulty-adapter corpus (T-12)
+
+`tests/faulty_adapters.py` defines seven test-only adapters, each breaking one contract from appendix
+§10 (off-by-one count, ×10 scale, empty reply, leaked connection, constant value, wrong command, late
+reply), plus a healthy control. `tests/test_fault_corpus.py` injects one faulty adapter as `greenlee`
+while healthy fakes keep the other two ammeters online; an oracle must fire on the framework's typed
+`RunResult` (errors, samples, statistics) or on the adapter's connection counters. The pass condition
+is inverted — a fault passes only when it is surfaced — and the healthy control runs all seven
+oracles to measure false positives:
+
+```sh
+python -m unittest tests.test_fault_corpus -v
+```
+
+It prints `Detection score: 7/7` and `False positives: 0/7`. No production emulator or `src/testing/`
+module is changed: the faulty devices live only in the test corpus, which is how the spec's "error
+simulation" bonus is met without polluting the SUT.
+
 ### Sample results from a regular test run
 
 `tests/test_sample_results.py` starts the frozen emulators in threads (by importing `build_emulators`
@@ -95,10 +114,10 @@ read-only. All of `results/` is git-ignored, so generated artifacts are never co
 Note that `python -m src.testing` is a client: it needs emulator servers already listening on the
 configured ports; the test file starts them itself.
 
-The regression suite currently has 167 tests (~9 s): 16 original fix tests, 5 skeleton tests,
+The regression suite currently has 169 tests (~9 s): 16 original fix tests, 5 skeleton tests,
 5 config/sampling tests, 39 adapter tests, 13 sampler tests, 19 analysis/storage tests, 18 framework
-wiring tests, 12 CLI tests, 13 SUT contract tests, 3 system tests, 23 visualization tests and
-1 sample-result test.
+wiring tests, 12 CLI tests, 13 SUT contract tests, 3 system tests, 23 visualization tests,
+1 sample-result test and 2 fault-corpus tests.
 The adapter tests run one shared contract suite against real emulators and the fake. Sampler tests use an injected clock, so timing
 tests finish in milliseconds. Storage tests write to temp directories and prove atomic writes leave
 no partial artifact. The framework tests inject fake adapters and one-shot connection doubles. The
@@ -135,3 +154,4 @@ The root `README.md` is supplied by the exercise and is not modified. Its values
 
 | # | Decision | Rationale |
 |---|---|---|
+| 1 | Fault injection lives only in `tests/`. | Each faulty adapter violates one adapter contract; the production adapters and the frozen emulators never hear about them. The SUT stays untouched and the detection score measures whether our oracles are watching, not whether the devices are broken. |

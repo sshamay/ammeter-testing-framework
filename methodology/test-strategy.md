@@ -29,7 +29,7 @@ Detail (oracle derivations, full 18 config cases, risks): `methodology/test-stra
 | [x] T-09 | Wire it in `src/testing/`: real `run_test()`, new CLI entry point, typed errors, continue-on-failure. `main.py` stays frozen. | `python -m src.testing` runs YAML → artifact; one broken ammeter doesn't erase the other two. |
 | [x] T-10 | E2E + ~10 new L0 tests: `tests/`. L2/L3, clean-clone run. | All levels green twice; no unclassified tracebacks. |
 | [x] T-11 | **BONUS** Visualization: CSV + text table; guarded matplotlib. | CSV written; missing plot package skips cleanly. |
-| [ ] T-12 | **BONUS** Error simulation: faulty-adapter corpus. | Detection score x/7; false positives measured. |
+| [x] T-12 | **BONUS** Error simulation: faulty-adapter corpus. | Detection score 7/7; false positives 0/7 (`tests/test_fault_corpus.py`). |
 | [ ] T-13 | **BONUS** Comparison report: precision/stability from CV and drift. | No trueness claim; limitation stated. |
 | [ ] T-14 | Final docs: `docs/test_framework_README.md` (fix log + design decisions), spec → evidence map. Sample results are generated locally under ignored `results/`. | Spec coverage mapped to tests; no result artifacts committed. |
 
