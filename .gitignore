@@ -14,3 +14,6 @@ results/
 .idea/
 .vscode/
 .DS_Store
+
+# Local-only working notes — not part of the deliverable
+methodology/
