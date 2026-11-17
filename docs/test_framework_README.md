@@ -19,13 +19,18 @@ Verified: a fresh virtualenv created from `requirements.txt` alone can import `y
 
 ## Scope of changes
 
-| Frozen supplied files (read-only) | Framework / our files |
+| Frozen supplied files (read-only) | Editable files |
 |---|---|
-| `Ammeters/*` (emulators and client), `main.py`, `config/config.yaml`, root `README.md` | `src/testing/*`, `src/utils/logger.py`, new files under `tests/`, `requirements.txt` |
+| `Ammeters/*` (emulators and client), `main.py`, `config/config.yaml`, root `README.md`, `src/utils/config.py` | Everything under `src/testing/` and `tests/` (including supplied test files), plus `src/utils/logger.py` and `requirements.txt` |
 
 The supplied `config/config.yaml` has `null` sampling values. We do not edit it: the framework merges
-its own defaults (in `src/testing/defaults.yaml`) over it before validating. Any future change to
-`requirements.txt` is recorded in the table above.
+its own defaults (in `src/testing/defaults.yaml`) over it before validating. Any change to
+`requirements.txt` is recorded in the "Environment and installed libraries" table above.
+
+Work is delivered as a progressive rollout, one branch per increment. `foundation/skeleton-and-docs`
+holds only the foundation/skeleton/docs tasks (T-01…T-03); each later task sits on its own branch
+stacked on the previous one (currently `feature/config-driven-sampling`, then `feature/ammeter-adapter-layer`). Every increment is
+regression-tested before the next begins, and nothing is pushed without approval.
 
 ## How to run
 

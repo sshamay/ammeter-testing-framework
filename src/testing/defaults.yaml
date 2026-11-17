@@ -1,0 +1,8 @@
+# Framework-owned sampling defaults. The supplied config/config.yaml is read-only.
+testing:
+  sampling:
+    measurements_count: 20
+    total_duration_seconds: null
+    sampling_frequency_hz: 10
+    max_sampling_frequency_hz: 1000
+    on_conflict: reject
