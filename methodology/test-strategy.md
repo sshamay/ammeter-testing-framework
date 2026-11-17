@@ -16,7 +16,7 @@ Detail (oracle derivations, full 18 config cases, risks): `methodology/test-stra
 |---|---|---|
 | [ ] T-01 | Freeze the decisions below. No code. | Decisions accepted. |
 | [x] T-02 | Unblock skeleton: `test_framework.py`, `logger.py`, `requirements.txt`. Add missing `Dict` import, logger handler/level/file, trim unused heavy deps (keep PyYAML). | Imports on 3.13 + 3.14; log line written; fresh venv installs. |
-| [ ] T-03 | Document usage in `docs/test_framework_README.md` (do **not** touch root `README.md`): how to run, installed libs, real ports/commands, root-README deviations. `.gitignore`: add `!results/sample/` exception. | Stranger can follow the docs verbatim; samples can be committed; root README unchanged in `git diff`. |
+| [x] T-03 | Document usage in `docs/test_framework_README.md` (do **not** touch root `README.md`): how to run, installed libs, real ports/commands, root-README deviations. `.gitignore`: add `!results/sample/` exception. | Stranger can follow the docs verbatim; samples can be committed; root README unchanged in `git diff`. |
 | [ ] T-04 | Config validation + `resolve_sampling()`: `config.py`, new `sampling.py`. | 18 config cases green (appendix §4.2); errors before any socket opens. |
 | [ ] T-05 | Adapters: new `adapters/`. Three + fake, one shared contract suite; `open`/`read_current`/`close`, timeouts. | All four pass; no socket/thread left open. |
 | [ ] T-06 | Sampler: new `sampler.py`. Count/frequency/duration precedence, injected clock, timeout, retry. | Timing tests deterministic, no `sleep()`; exact count. |
