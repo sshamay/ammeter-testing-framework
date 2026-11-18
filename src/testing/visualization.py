@@ -143,6 +143,9 @@ def write_text_table(result: RunResult, directory: Path, notes: Sequence[str] = 
     if result.errors:
         lines.append(f"Errors ({len(result.errors)}):")
         lines.extend(f"  - {error}" for error in result.errors)
+    if result.recovered:
+        lines.append(f"Recovered ({len(result.recovered)}):")
+        lines.extend(f"  - {error}" for error in result.recovered)
     lines.extend(f"Note: {note}" for note in notes)
     lines.append(DISCLAIMER)
     try:

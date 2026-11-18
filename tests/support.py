@@ -38,8 +38,18 @@ class FakeClock:
         self.now_value += seconds
 
 
-def write_config(directory, count=3, frequency=10):
-    """Write a small test config with fake ports and a fixed reading count."""
+def write_config(directory, count=3, frequency=10, *, extra_ammeters=()):
+    """Write a small test config with fake ports and a fixed reading count.
+
+    ``extra_ammeters`` is an iterable of ``(name, command)`` pairs appended after the three standard
+    devices, so a test can prove config-driven extension without hard-coding production code.
+    """
+    ammeters = {
+        name: {"port": 5001 + index, "command": COMMANDS[name]}
+        for index, name in enumerate(NAMES)
+    }
+    for index, (name, command) in enumerate(extra_ammeters, start=len(NAMES)):
+        ammeters[name] = {"port": 5001 + index, "command": command}
     config = {
         "testing": {
             "sampling": {
@@ -48,10 +58,7 @@ def write_config(directory, count=3, frequency=10):
                 "sampling_frequency_hz": frequency,
             }
         },
-        "ammeters": {
-            name: {"port": 5001 + index, "command": COMMANDS[name]}
-            for index, name in enumerate(NAMES)
-        },
+        "ammeters": ammeters,
         "analysis": {"statistical_metrics": None},
         "result_management": {"storage": None},
     }

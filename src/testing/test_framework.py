@@ -80,7 +80,9 @@ class AmmeterTestFramework:
 
         ``ammeter_type`` is a name from the config's ``ammeters`` section, or ``"all"`` (the default).
         A per-ammeter failure is added to ``result.errors`` and the loop continues, so a broken device
-        cannot delete the other measurements. Errors from untyped exceptions are prefixed
+        cannot delete the other measurements. Transient faults that a retry overcame are kept
+        separately in ``result.recovered`` — they did not spoil the readings, but they are still
+        evidence of a flaky device or wire. Errors from untyped exceptions are prefixed
         ``UNEXPECTED:`` to make adapter or framework bugs visible in the report. Configuration,
         analysis and storage failures propagate as typed errors — they are not per-ammeter faults.
         """
@@ -92,6 +94,7 @@ class AmmeterTestFramework:
 
         samples: dict = {}
         errors = []
+        recovered = []
         for name, adapter in selected.items():
             try:
                 series = Sampler(adapter, plan, self.settings, self.clock).run()
@@ -105,11 +108,15 @@ class AmmeterTestFramework:
                 errors.append(text)
                 continue
             samples[name] = series.values
+            recovered.extend(
+                format_failure(name, adapter, error) for error in series.errors
+            )
 
         result = build_run_result(
             samples,
             self.config,
             errors,
+            recovered=recovered,
             effective_settings={
                 "sampling": asdict(plan),
                 "retry": asdict(self.settings),

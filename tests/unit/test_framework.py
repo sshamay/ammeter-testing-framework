@@ -201,6 +201,53 @@ class TestContinueOnFailure(FrameworkCase):
         self.assertEqual(result.errors, ())
         self.assertEqual(set(result.statistics), set(NAMES))
         self.assertEqual(result.samples["entes"], (5.0, 5.1, 4.9))
+        self.assertEqual(len(result.recovered), 1)
+        self.assertIn("entes@fake:5002", result.recovered[0])
+        self.assertIn("TransportError: transient", result.recovered[0])
+
+    def test_recovered_errors_are_persisted_in_the_artifact(self):
+        scripts = dict(GOOD)
+        scripts["greenlee"] = (TransportError("transient"), 4.0, 4.1, 3.9)
+        result = self.framework(scripts).run_test()
+
+        data = load_run(result.run_id, self.results_dir)
+        self.assertEqual(data["errors"], [])
+        self.assertEqual(len(data["recovered"]), 1)
+        self.assertEqual(tuple(data["recovered"]), result.recovered)
+        self.assertIn("greenlee@fake:5001: TransportError: transient", data["recovered"][0])
+
+
+class TestExtension(FrameworkCase):
+    """A new device needs only a config entry and an adapter with the shared contract."""
+
+    def test_fourth_ammeter_via_config_and_adapter_only(self):
+        path = write_config(
+            self.temp.name, extra_ammeters=(("bench", "MEASURE_BENCH -get_current"),)
+        )
+        scripts = dict(GOOD)
+        scripts["bench"] = (7.0, 7.1, 6.9)
+        framework = AmmeterTestFramework(
+            path,
+            adapter_class=scripted_adapter_class(scripts),
+            clock=self.clock,
+            settings=self.settings,
+            results_dir=self.results_dir,
+        )
+
+        result = framework.run_test()
+        expected = set(NAMES) | {"bench"}
+
+        self.assertEqual(set(result.statistics), expected)
+        self.assertEqual(result.samples["bench"], (7.0, 7.1, 6.9))
+        self.assertEqual(result.statistics["bench"].count, 3)
+        self.assertEqual(result.errors, ())
+        data = load_run(result.run_id, self.results_dir)
+        self.assertEqual(set(data["samples"]), expected)
+        self.assertEqual(data["config_snapshot"]["ammeters"]["bench"]["port"], 5004)
+        self.assertEqual(
+            data["config_snapshot"]["ammeters"]["bench"]["command"],
+            "MEASURE_BENCH -get_current",
+        )
 
 
 class TestFailureFormatting(unittest.TestCase):
