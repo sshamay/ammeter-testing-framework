@@ -6,6 +6,7 @@ recorded and the remaining ammeters are still measured — one broken device mus
 results.
 """
 
+from dataclasses import asdict
 from typing import Mapping, Optional, Type
 
 from ..utils.config import load_config
@@ -105,7 +106,15 @@ class AmmeterTestFramework:
                 continue
             samples[name] = series.values
 
-        result = build_run_result(samples, self.config, errors)
+        result = build_run_result(
+            samples,
+            self.config,
+            errors,
+            effective_settings={
+                "sampling": asdict(plan),
+                "retry": asdict(self.settings),
+            },
+        )
         if save:
             save_run(result, self.results_dir)
         return result

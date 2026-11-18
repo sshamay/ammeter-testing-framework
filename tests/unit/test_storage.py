@@ -11,8 +11,10 @@ from src.testing.errors import StorageError
 from src.testing.storage import (
     build_run_result,
     compare_runs,
+    compare_runs_by_id,
     list_runs,
     load_run,
+    load_run_result,
     new_run_id,
     save_run,
 )
@@ -29,6 +31,9 @@ class TestRunResult(unittest.TestCase):
         self.assertEqual(result.config_snapshot["ammeters"]["greenlee"]["port"], 5001)
         self.assertIsInstance(result.statistics["greenlee"], Statistics)
         self.assertEqual(result.samples["greenlee"], (1.0, 2.0))
+        self.assertIn("python_version", result.environment)
+        self.assertIn("platform", result.environment)
+        self.assertIn("framework_version", result.environment)
 
     def test_two_runs_in_one_second_have_different_ids(self):
         self.assertNotEqual(new_run_id(), new_run_id())
@@ -88,6 +93,58 @@ class TestStorage(unittest.TestCase):
         self.assertIn("greenlee", comparison)
         self.assertGreater(comparison["greenlee"]["cv_delta"], 0)
         self.assertGreater(comparison["greenlee"]["drift_delta"], 0)
+
+    def test_effective_settings_and_environment_are_persisted(self):
+        result = build_run_result(
+            {"greenlee": (1.0, 2.0)},
+            {},
+            effective_settings={"sampling": {"count": 2, "frequency_hz": 10}},
+            environment={"python_version": "3.14.6"},
+        )
+        save_run(result, self.results_dir)
+
+        data = load_run(result.run_id, self.results_dir)
+        self.assertEqual(
+            data["effective_settings"]["sampling"], {"count": 2, "frequency_hz": 10}
+        )
+        self.assertEqual(data["environment"]["python_version"], "3.14.6")
+
+    def test_load_run_result_rebuilds_the_original_result(self):
+        result = build_run_result(
+            {"greenlee": (1.0, 2.0)},
+            {"ammeters": {"greenlee": {"port": 5001}}},
+            ["greenlee@fake:5001: connect failed"],
+            effective_settings={"sampling": {"count": 2}},
+            environment={"python_version": "3.14.6"},
+        )
+        save_run(result, self.results_dir)
+
+        self.assertEqual(load_run_result(result.run_id, self.results_dir), result)
+
+    def test_compare_runs_by_id_uses_archived_artifacts(self):
+        stable = build_run_result({"greenlee": (1.0, 1.0, 1.0)}, {})
+        varying = build_run_result({"greenlee": (1.0, 2.0, 3.0)}, {})
+        save_run(stable, self.results_dir)
+        save_run(varying, self.results_dir)
+
+        comparison = compare_runs_by_id(
+            stable.run_id, varying.run_id, self.results_dir
+        )
+        self.assertGreater(comparison["greenlee"]["cv_delta"], 0)
+        self.assertGreater(comparison["greenlee"]["drift_delta"], 0)
+
+    def test_legacy_artifact_without_new_metadata_still_loads(self):
+        result = build_run_result({"greenlee": (1.0, 2.0)}, {})
+        path = save_run(result, self.results_dir)
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data.pop("effective_settings")
+        data.pop("environment")
+        path.write_text(json.dumps(data), encoding="utf-8")
+
+        loaded = load_run_result(result.run_id, self.results_dir)
+        self.assertEqual(loaded.effective_settings, {})
+        self.assertEqual(loaded.environment, {})
+        self.assertEqual(loaded.samples["greenlee"], (1.0, 2.0))
 
     def test_artifact_is_valid_json_with_sorted_keys(self):
         result = build_run_result({"x": (2.0,)}, {})

@@ -35,7 +35,7 @@ from tests.support import (
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ARTIFACT_KEYS = {
     "run_id", "created_utc", "config_snapshot", "statistics",
-    "samples", "errors", "schema_version",
+    "samples", "errors", "schema_version", "effective_settings", "environment",
 }
 STAT_KEYS = {"count", "mean", "median", "stddev", "min", "max", "cv", "drift"}
 
