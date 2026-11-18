@@ -114,7 +114,7 @@ This proves the tests detect the faults they claim to; it is a **curated** set, 
 | Live emulator output | Frozen `Ammeters/` + `src/utils/Utils.py` (`random.uniform`) | Contract tests, adapters, sample | Unseeded random floats → **bounds only**: Greenlee 0.01–100, ENTES 5–200, CIRCUTOR 0.001–0.1 |
 | Committed evidence | `results/sample/20261118T103405Z-197ff68345e6/` | Deliverable, not an input | One JSON, three CSVs, `summary.txt`, two PNGs; 20 samples per ammeter, `errors: []` |
 
-The assertion policy follows `test-strategy.md`: injected `side_effect=[...]` gives known operands so the value is asserted **exactly**; a recording `side_effect` around the real generator gives exact draws so the **formula** is asserted exactly; `wraps=` supports call count/order, never the value; unmocked sockets are checked against their documented bounds only.
+The assertion policy is: injected `side_effect=[...]` gives known operands so the value is asserted **exactly**; a recording `side_effect` around the real generator gives exact draws so the **formula** is asserted exactly; `wraps=` supports call count/order, never the value; unmocked sockets are checked against their documented bounds only.
 
 No reference meter exists, so reports never claim trueness: accuracy reporting is limited to precision/stability (CV/drift), and CIRCUTOR's raw values are V·s, not amperes.
 
