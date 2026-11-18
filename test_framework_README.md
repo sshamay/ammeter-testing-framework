@@ -20,6 +20,7 @@ pip install -r requirements.txt
 | `python -m unittest tests.system.test_sample_results` | One campaign into a temp directory (read-only default) | Manual, or as part of discovery |
 | `AMMETER_WRITE_SAMPLE=1 python -m unittest tests.system.test_sample_results` | The same campaign twice: temp + `results/sample/` | Manual, env-var gated (`WRITE_SAMPLE` in `tests/system/test_sample_results.py`) |
 | `python -m unittest tests.test_fault_corpus -v` | Meta-test: 7/7 detection, 0/7 false positives | Manual, also part of discovery |
+| `python -m tests.mutation_check` | Mutation check: 9 injected source faults, all must be killed (~20 s) | Manual — after changes under `src/testing/` |
 | `python main.py` | Frozen demo: starts the emulators and takes one reading from each — **not** the test runner (Ctrl-C to stop) | Manual; also the target of the Ctrl-C test |
 
 Every run is human-invoked: there is no CI workflow, Makefile, tox or pytest configuration (`pyproject.toml` declares packaging metadata only). Each `test_*.py` also ends in `if __name__ == "__main__": unittest.main(...)`, but direct `python tests/.../test_x.py` is unreliable because tests import helpers as `from tests.support import ...`; use `python -m unittest <module>` from the repository root.
@@ -93,6 +94,12 @@ Each behaviour gets a row, each applicable category a cell with a representative
 | Visualization | `tests/unit/test_visualization.py::test_enabled_writes_all_outputs` | `tests/unit/test_visualization.py::test_empty_plot_types_render_nothing` | `tests/unit/test_visualization.py::test_invalid_settings_raise_config_error` | `tests/unit/test_visualization.py::test_absent_matplotlib_skips_cleanly`, `test_plot_render_failure_is_a_note_not_a_crash` |
 
 The classifier decision point is pinned separately by `tests/unit/test_sampler.py::test_transient_errors_are_retryable_permanent_ones_are_not`: transport, timeout, protocol and parse errors retry; config, analysis and storage errors fail fast. Only transient faults retry, with exponential backoff — connection errors and bad replies can recover, configuration/analysis/storage errors cannot — and the injected clock pins the exact 0.05 → 0.10 → 0.20 s schedule.
+
+### Mutation check
+
+`python -m tests.mutation_check` is a dependency-free mutation check, not a test: unittest discovery ignores it because the filename has no `test_` prefix. It copies the repository to a temp directory, injects nine one-line source faults (recovered-error reporting, config-driven adapter building, retry classification, run-ID uniqueness), runs the targeted unit modules against each copy, and reports which faults a test caught. Exit status 0 means the untouched baseline passed and every mutant was killed; a survivor or a skipped mutant (a changed source anchor) fails the check. Nothing in the repository is modified and no extra package is installed.
+
+This proves the tests detect the faults they claim to; it is a **curated** set, not a global mutation score or an exhaustive tool run. If you change one of the exact source lines used as an anchor, update the `Mutant` entry in `tests/mutation_check.py` alongside it.
 
 ### Test data sources
 
