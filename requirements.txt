@@ -1,4 +1,4 @@
 pyyaml>=6.0
 
-# Optional, used only by the guarded visualization import (T-11):
+# Optional, used only by the guarded visualization import:
 # matplotlib>=3.4.0

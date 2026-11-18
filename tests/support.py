@@ -3,12 +3,24 @@
 No ``test*`` prefix, so unittest discovery does not collect this module.
 """
 
+from pathlib import Path
+
+import yaml
+
+from src.testing.adapters.fake import FakeAmmeterAdapter
+
 COMMANDS = {
     "greenlee": "MEASURE_GREENLEE -get_measurement",
     "entes": "MEASURE_ENTES -get_data",
     "circutor": "MEASURE_CIRCUTOR -get_measurement -current",
 }
 NAMES = ("greenlee", "entes", "circutor")
+
+GOOD = {
+    "greenlee": (4.0, 4.1, 3.9),
+    "entes": (5.0, 5.1, 4.9),
+    "circutor": (0.02, 0.021, 0.019),
+}
 
 
 class FakeClock:
@@ -24,3 +36,37 @@ class FakeClock:
     def sleep(self, seconds: float) -> None:
         self.sleeps.append(seconds)
         self.now_value += seconds
+
+
+def write_config(directory, count=3, frequency=10):
+    """Write a small test config with fake ports and a fixed reading count."""
+    config = {
+        "testing": {
+            "sampling": {
+                "measurements_count": count,
+                "total_duration_seconds": None,
+                "sampling_frequency_hz": frequency,
+            }
+        },
+        "ammeters": {
+            name: {"port": 5001 + index, "command": COMMANDS[name]}
+            for index, name in enumerate(NAMES)
+        },
+        "analysis": {"statistical_metrics": None},
+        "result_management": {"storage": None},
+    }
+    path = Path(directory) / "config.yaml"
+    path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    return str(path)
+
+
+def scripted_adapter_class(scripts):
+    """An adapter class whose per-ammeter readings come from ``scripts``."""
+
+    class ScriptedAdapter(FakeAmmeterAdapter):
+        def __init__(self, name, port, command, host="fake", **kwargs):
+            super().__init__(
+                name=name, values=scripts[name], port=port, command=command, host=host
+            )
+
+    return ScriptedAdapter
