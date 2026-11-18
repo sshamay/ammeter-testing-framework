@@ -1,16 +1,19 @@
 """Archived run results with unique IDs and atomic writes.
 
-The JSON artifact is the framework's reporting evidence: it carries the config snapshot, the stats,
-the raw samples and any errors. Writes go to a temp file in the same directory and are renamed into
-place, so a failure can never leave a half-written result.
+The JSON artifact is the framework's reporting evidence: it carries the config snapshot, the applied
+sampling/retry settings, the runtime environment, the stats, the raw samples and any errors. Writes
+go to a temp file in the same directory and are renamed into place, so a failure can never leave a
+half-written result.
 """
 
 import json
 import os
+import platform
 import tempfile
 import uuid
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from importlib import metadata
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Tuple
 
@@ -30,6 +33,8 @@ class RunResult:
     samples: Mapping[str, Tuple[float, ...]]
     errors: Tuple[str, ...] = ()
     schema_version: int = SCHEMA_VERSION
+    effective_settings: Mapping[str, Any] = field(default_factory=dict)
+    environment: Mapping[str, Any] = field(default_factory=dict)
 
 
 def new_run_id() -> str:
@@ -38,10 +43,26 @@ def new_run_id() -> str:
     return f"{stamp}-{uuid.uuid4().hex[:12]}"
 
 
+def _default_environment() -> dict:
+    """Runtime context needed to interpret an archived run later."""
+    try:
+        framework_version = metadata.version("ammeter-testing-framework")
+    except metadata.PackageNotFoundError:
+        framework_version = "unknown"
+    return {
+        "python_version": platform.python_version(),
+        "platform": platform.platform(),
+        "framework_version": framework_version,
+    }
+
+
 def build_run_result(
     samples: Mapping[str, Tuple[float, ...]],
     config_snapshot: Mapping[str, Any],
     errors: Iterable[str] = (),
+    *,
+    effective_settings: Optional[Mapping[str, Any]] = None,
+    environment: Optional[Mapping[str, Any]] = None,
 ) -> RunResult:
     """Compute every ammeter's stats and wrap them with metadata into a frozen result."""
     return RunResult(
@@ -51,6 +72,10 @@ def build_run_result(
         statistics={name: compute_statistics(values) for name, values in samples.items()},
         samples=dict(samples),
         errors=tuple(errors),
+        effective_settings=dict(effective_settings or {}),
+        environment=dict(
+            environment if environment is not None else _default_environment()
+        ),
     )
 
 
@@ -98,6 +123,27 @@ def load_run(run_id: str, results_dir: str = DEFAULT_RESULTS_DIR) -> dict:
     return data
 
 
+def load_run_result(run_id: str, results_dir: str = DEFAULT_RESULTS_DIR) -> RunResult:
+    """Rebuild a ``RunResult`` from an artifact; older artifacts omit the new metadata keys."""
+    data = load_run(run_id, results_dir)
+    try:
+        return RunResult(
+            run_id=data["run_id"],
+            created_utc=data["created_utc"],
+            config_snapshot=data["config_snapshot"],
+            statistics={
+                name: Statistics(**entry) for name, entry in data["statistics"].items()
+            },
+            samples={name: tuple(values) for name, values in data["samples"].items()},
+            errors=tuple(data.get("errors", ())),
+            schema_version=data["schema_version"],
+            effective_settings=data.get("effective_settings", {}),
+            environment=data.get("environment", {}),
+        )
+    except (AttributeError, KeyError, TypeError, ValueError) as error:
+        raise StorageError(f"artifact {run_id} has an invalid run shape: {error}") from error
+
+
 def compare_runs(first: RunResult, second: RunResult) -> Mapping[str, Mapping[str, float]]:
     """Deltas in precision/stability metrics — never a trueness claim."""
     comparison = {}
@@ -108,3 +154,12 @@ def compare_runs(first: RunResult, second: RunResult) -> Mapping[str, Mapping[st
             "drift_delta": after.drift - before.drift,
         }
     return comparison
+
+
+def compare_runs_by_id(
+    first: str, second: str, results_dir: str = DEFAULT_RESULTS_DIR
+) -> Mapping[str, Mapping[str, float]]:
+    """Compare two archived runs by ID, using their CV/drift deltas only."""
+    return compare_runs(
+        load_run_result(first, results_dir), load_run_result(second, results_dir)
+    )

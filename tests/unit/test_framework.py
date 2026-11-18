@@ -95,6 +95,8 @@ class TestFrameworkWiring(FrameworkCase):
         self.assertEqual(data["config_snapshot"]["ammeters"]["entes"]["port"], 5002)
         self.assertEqual(len(data["samples"]), 3)
         self.assertAlmostEqual(data["statistics"]["greenlee"]["mean"], 4.0)
+        self.assertEqual(data["effective_settings"]["sampling"]["count"], 3)
+        self.assertEqual(data["effective_settings"]["retry"]["max_attempts"], 2)
 
     def test_no_save_skips_artifact(self):
         result = self.framework(GOOD).run_test(save=False)

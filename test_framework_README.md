@@ -16,7 +16,7 @@ pip install -r requirements.txt
 
 | Command | Purpose | Trigger |
 |---|---|---|
-| `python -m unittest discover -s tests` | Full regression suite (155 tests, ~9 s) | Manual — after every commit |
+| `python -m unittest discover -s tests` | Full regression suite (159 tests, ~9 s) | Manual — after every commit |
 | `python -m unittest tests.system.test_sample_results` | One campaign into a temp directory (read-only default) | Manual, or as part of discovery |
 | `AMMETER_WRITE_SAMPLE=1 python -m unittest tests.system.test_sample_results` | The same campaign twice: temp + `results/sample/` | Manual, env-var gated (`WRITE_SAMPLE` in `tests/system/test_sample_results.py`) |
 | `python -m unittest tests.test_fault_corpus -v` | Meta-test: 7/7 detection, 0/7 false positives | Manual, also part of discovery |
@@ -75,7 +75,7 @@ The root `README.md` is supplied by the exercise and is not modified. Its values
 
 ## What the suite covers
 
-The regression suite has 155 tests (~9 s): 5 skeleton, 10 config/sampling, 43 adapter, 17 sampler, 19 analysis/storage, 19 framework wiring, 16 SUT contract, 4 system, 19 visualization, 1 sample-result and 2 fault-corpus tests. The fix regressions formerly in `tests/test_fixes.py` were redistributed to the modules that own them.
+The regression suite has 159 tests (~9 s): 5 skeleton, 10 config/sampling, 43 adapter, 17 sampler, 23 analysis/storage, 19 framework wiring, 16 SUT contract, 4 system, 19 visualization, 1 sample-result and 2 fault-corpus tests. The fix regressions formerly in `tests/test_fixes.py` were redistributed to the modules that own them.
 
 Adapter tests run one shared contract suite against real emulators and the fake. Sampler tests use an injected clock, so timing tests finish in milliseconds. Storage tests write to temp directories and prove atomic writes leave no partial artifact. Framework tests inject fake adapters and one-shot connection doubles. The SUT contract tests cover documented value bounds, exact formula oracles from injected draws, the wire round-trip and the client success path. System tests check the artifact's golden key shape, prove no connection/thread leak across a batch, and run `run_test()` twice from a clean `git archive HEAD` export with stderr asserted empty — no unclassified tracebacks.
 
@@ -110,6 +110,19 @@ The classifier decision point is pinned separately by `tests/unit/test_sampler.p
 The assertion policy follows `test-strategy.md`: injected `side_effect=[...]` gives known operands so the value is asserted **exactly**; a recording `side_effect` around the real generator gives exact draws so the **formula** is asserted exactly; `wraps=` supports call count/order, never the value; unmocked sockets are checked against their documented bounds only.
 
 No reference meter exists, so reports never claim trueness: accuracy reporting is limited to precision/stability (CV/drift), and CIRCUTOR's raw values are V·s, not amperes.
+
+### Result archive
+
+Each `<run_id>.json` under `results/runs/` holds `run_id`, `created_utc`, `schema_version`, the raw `config_snapshot`, `effective_settings` (the resolved sampling plan and retry values actually used), `environment` (Python, platform and framework version), per-ammeter `statistics`, raw `samples` and `errors`. `list_runs()` returns IDs oldest-first, `load_run()` returns the validated dict and `load_run_result()` rebuilds a `RunResult`. `compare_runs_by_id(first, second)` reports CV/drift deltas between two archived runs — precision/stability only, never trueness:
+
+```py
+from src.testing.storage import compare_runs_by_id, list_runs
+
+first, second = list_runs("results/runs")[-2:]
+deltas = compare_runs_by_id(first, second, "results/runs")
+```
+
+Artifacts written before `effective_settings` and `environment` were added (including the committed sample) still load; both keys are optional at schema version 1.
 
 ### Visualization
 
