@@ -2,7 +2,8 @@
 
 CSV and text output are always available and need no extra packages. PNG rendering is a *guarded*
 feature: if ``matplotlib`` is missing, the run records a skip note and continues instead of failing.
-Nothing here decides the exit status — that stays the CLI's job.
+Nothing here prints or raises for a missing extra: skip notes live in the summary artifact, and
+callers own any presentation or status handling.
 """
 
 import csv

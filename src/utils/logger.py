@@ -1,6 +1,6 @@
 """Small file logger retained from the supplied skeleton.
 
-The framework itself never logs — it returns typed results and leaves presentation to the CLI — so
+The framework itself never logs — it returns typed results and leaves presentation to its callers — so
 this utility is not on the measurement path. It is kept for callers that want an append-only log and
 for its skeleton regression tests. Paths use :mod:`pathlib` so behaviour is identical on Windows,
 Linux and macOS.

@@ -27,7 +27,7 @@ Detail (oracle derivations, full 18 config cases, risks): local-only `methodolog
 | [x] T-06 | Sampler: new `sampler.py`. Count/frequency/duration precedence, injected clock, timeout, retry. | Timing tests deterministic, no `sleep()`; exact count. |
 | [x] T-07 | Statistics: new `analysis.py`. Mean, median, stddev, min, max, CV, drift; n=1 and constant values. | Seeded/metamorphic tests exact; no `ZeroDivisionError`. |
 | [x] T-08 | Storage: new `storage.py`. Frozen `RunResult` JSON, unique ID, metadata, list/compare. | Two runs in one second differ; retrieval works; no partial artifacts. |
-| [x] T-09 | Wire it in `src/testing/`: real `run_test()`, new CLI entry point, typed errors, continue-on-failure. `main.py` stays frozen. | `python -m src.testing` runs YAML → artifact; one broken ammeter doesn't erase the other two. |
+| [x] T-09 | Wire it in `src/testing/`: real `run_test()`, typed errors, continue-on-failure. `main.py` stays frozen. | A direct `run_test()` call runs YAML → artifact; one broken ammeter doesn't erase the other two. |
 | [x] T-10 | E2E + ~10 new L0 tests: `tests/`. L2/L3, clean-clone run. | All levels green twice; no unclassified tracebacks. |
 | [x] T-11 | **BONUS** Visualization: CSV + text table; guarded matplotlib. | CSV written; missing plot package skips cleanly. |
 | [x] T-12 | **BONUS** Error simulation: faulty-adapter corpus. | Detection score 7/7; false positives 0/7 (`tests/test_fault_corpus.py`). |
@@ -44,7 +44,7 @@ can start after T-09; T-14 is last.
 | API | `AmmeterAdapter`: `open(timeout)`, `read_current() -> float`, `close()`, context manager; never prints. Same contract test for all devices + fake. |
 | Config | Ports/commands from `config.yaml`; `build_emulators()` guards drift. Count + frequency win, duration derived; >1 % conflict → `ConfigError`; 1000 Hz ceiling (configurable). |
 | Timing | Injected clock in our code; no wall-clock assertions. |
-| Errors | Typed: `ConfigError`, `TransportError`/`SampleTimeout`, `ProtocolError`/`ParseError`, `StorageError`, `AnalysisError`; message names ammeter, port, cause. Report, keep other results, exit non-zero. |
+| Errors | Typed: `ConfigError`, `TransportError`/`SampleTimeout`, `ProtocolError`/`ParseError`, `StorageError`, `AnalysisError`; message names ammeter, port, cause. Report in `RunResult.errors`, keep other results; no exit-status layer. |
 | Results | Frozen `RunResult` JSON: ID, UTC time, config snapshot, stats, samples, errors. |
 | Accuracy | No reference → compare precision/stability only. CIRCUTOR outputs V·s, so raw values aren't comparable as amperes. |
 | Dependencies | PyYAML + stdlib; matplotlib optional behind a guarded import. |
@@ -97,7 +97,7 @@ F-IDs are from appendix §5.1. "existing" = already in `tests/test_fixes.py` (16
 | Occupied port / refused connect → `TransportError` (F-24) | Contract | Error handling | T-10 |
 | Invalid config → `ConfigError` before any socket opens | Unit | Error handling | T-04 |
 | Typed error names ammeter + port + cause | Unit | Error handling + reporting | T-09 |
-| Continue on failure, aggregate errors, exit non-zero | System | Error handling | T-09 |
+| Continue on failure, aggregate errors in `RunResult.errors` | System | Error handling | T-09 |
 | Ctrl-C exits cleanly (existing) | System | Error handling | existing |
 | Golden-shape check of the result artifact | System | Clear reporting | T-08/T-10 |
 | Logger actually writes a line F-28 | Unit | Reporting + code quality | T-02 |
@@ -121,7 +121,7 @@ Determinism depends on the setup, not the SUT:
 
 ## Done
 
-- [x] `python main.py` still works unchanged, and the framework CLI (`python -m src.testing`) works from a clean clone, twice.
+- [x] `python main.py` still works unchanged, and `run_test()` works from a clean clone, twice.
 - [ ] All spec capabilities have a test and a committed sample artifact (sample artifact done; spec → evidence map still open).
 - [x] Error paths raise typed errors; no silent "No data received".
 - [x] `git diff` on `Ammeters/` contains only fixes already logged — no test-only edits.

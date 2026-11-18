@@ -1,20 +1,17 @@
-"""T-11: stdlib visualization writers, guarded matplotlib, and CLI wiring.
+"""T-11: stdlib visualization writers and guarded matplotlib.
 
 CSV/text output must work with no optional packages. PNG rendering is a guarded feature: absent
-matplotlib, missing/failed plots become notes instead of exceptions or a non-zero exit status.
+matplotlib, missing/failed plots become notes in the summary instead of exceptions.
 """
 
 import csv
-import io
 import tempfile
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import yaml
 
-from src.testing.cli import EXIT_FATAL, EXIT_OK, main
 from src.testing.errors import ConfigError, StorageError
 from src.testing.storage import RunResult, build_run_result
 from src.testing.visualization import (
@@ -239,58 +236,6 @@ class TestVisualizeOrchestrator(unittest.TestCase):
                 artifacts = visualize(sample_result(), temp_dir)
             self.assertTrue(artifacts.skipped)
             self.assertIn("matplotlib not installed", artifacts.table_path.read_text(encoding="utf-8"))
-
-
-class TestCLIVisualization(unittest.TestCase):
-    def run_cli(self, args, config, results_dir):
-        result = sample_result()
-        with patch("src.testing.cli.AmmeterTestFramework") as framework:
-            framework.return_value.config = config
-            framework.return_value.run_test.return_value = result
-            output = io.StringIO()
-            with redirect_stdout(output):
-                code = main(["--results-dir", str(results_dir)] + args)
-        return code, output.getvalue(), result
-
-    def test_default_run_writes_csv_and_text_and_reports_skip(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            results_dir = Path(temp_dir) / "runs"
-            with patch("src.testing.visualization._load_pyplot", return_value=None):
-                code, output, result = self.run_cli([], {}, results_dir)
-            directory = results_dir / "visualizations" / result.run_id
-            self.assertEqual(code, EXIT_OK)
-            self.assertEqual(
-                sorted(path.name for path in directory.iterdir()),
-                ["entes.csv", "greenlee.csv", "summary.txt"],
-            )
-            self.assertIn("Note: matplotlib not installed", output)
-
-    def test_no_visualize_flag_skips_all_output(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            results_dir = Path(temp_dir) / "runs"
-            code, output, _ = self.run_cli(["--no-visualize"], {}, results_dir)
-            self.assertEqual(code, EXIT_OK)
-            self.assertFalse((results_dir / "visualizations").exists())
-            self.assertNotIn("Note:", output)
-
-    def test_config_can_disable_visualization(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            results_dir = Path(temp_dir) / "runs"
-            config = {"analysis": {"visualization": {"enabled": False}}}
-            code, _, _ = self.run_cli([], config, results_dir)
-            self.assertEqual(code, EXIT_OK)
-            self.assertFalse((results_dir / "visualizations").exists())
-
-    def test_invalid_visualization_config_is_fatal(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            config = {"analysis": {"visualization": {"backend": "png"}}}
-            with patch("src.testing.cli.AmmeterTestFramework") as framework:
-                framework.return_value.config = config
-                errors = io.StringIO()
-                with redirect_stderr(errors):
-                    code = main(["--results-dir", temp_dir])
-            self.assertEqual(code, EXIT_FATAL)
-            self.assertIn("ConfigError", errors.getvalue())
 
 
 if __name__ == "__main__":

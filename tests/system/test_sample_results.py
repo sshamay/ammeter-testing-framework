@@ -1,6 +1,6 @@
 """Regular unittest run that produces sample results and visualizations (T-14, part A).
 
-No separate CLI process and no change to the frozen ``main.py``: this file imports ``build_emulators``
+No separate process and no change to the frozen ``main.py``: this file imports ``build_emulators``
 from it, starts the three emulators in threads, and drives ``AmmeterTestFramework`` directly.
 
 By default the campaign runs into a temp directory, so the regression suite stays read-only. Set

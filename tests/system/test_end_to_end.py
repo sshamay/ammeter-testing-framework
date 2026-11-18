@@ -10,7 +10,6 @@ import tempfile
 import threading
 import time
 import unittest
-from contextlib import redirect_stdout
 from pathlib import Path
 
 import yaml
@@ -33,6 +32,24 @@ ARTIFACT_KEYS = {
     "samples", "errors", "schema_version",
 }
 STAT_KEYS = {"count", "mean", "median", "stddev", "min", "max", "cv", "drift"}
+
+# Executed with ``python -c`` and cwd=<clean git export>, so its imports resolve from the export
+# tree rather than from the repository running the suite. No CLI module exists any more.
+CLEAN_EXPORT_RUNNER = """
+import sys
+
+from src.testing.test_framework import AmmeterTestFramework
+from src.testing.visualization import settings_from_config, visualize
+
+config_path, results_dir = sys.argv[1], sys.argv[2]
+framework = AmmeterTestFramework(config_path=config_path, results_dir=results_dir)
+result = framework.run_test()
+visualize(result, results_dir, settings_from_config(framework.config))
+print(f"MEASURED {len(result.statistics)}")
+for error in result.errors:
+    print(error, file=sys.stderr)
+sys.exit(1 if result.errors else 0)
+"""
 
 
 def safe_extract(archive, destination):
@@ -130,8 +147,8 @@ class TestBatchHygiene(unittest.TestCase):
 
 
 class TestCleanExport(unittest.TestCase):
-    def test_cli_runs_twice_from_a_clean_git_export(self):
-        with tempfile.TemporaryDirectory() as temp_dir, redirect_stdout(io.StringIO()):
+    def test_run_test_runs_twice_from_a_clean_git_export(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
             archive = subprocess.run(
                 ["git", "archive", "HEAD"], cwd=REPO_ROOT, capture_output=True, check=True
             ).stdout
@@ -168,9 +185,8 @@ class TestCleanExport(unittest.TestCase):
 
             results_dir = Path(temp_dir) / "runs"
             command = [
-                sys.executable, "-m", "src.testing",
-                "--config", str(config_path),
-                "--results-dir", str(results_dir),
+                sys.executable, "-c", CLEAN_EXPORT_RUNNER,
+                str(config_path), str(results_dir),
             ]
             for attempt in range(2):
                 completed = subprocess.run(
@@ -178,13 +194,15 @@ class TestCleanExport(unittest.TestCase):
                 )
                 self.assertEqual(completed.returncode, 0, completed.stderr + completed.stdout)
                 self.assertEqual(completed.stderr, "", "unclassified traceback on stderr")
-                self.assertIn("3 of 3 ammeters measured", completed.stdout)
+                self.assertIn("MEASURED 3", completed.stdout)
 
             identifiers = list_runs(str(results_dir))
             self.assertEqual(len(identifiers), 2)
             self.assertEqual(len(set(identifiers)), 2)
             for run_id in identifiers:
-                self.assertEqual(set(load_run(run_id, str(results_dir))["statistics"]), set(COMMANDS))
+                data = load_run(run_id, str(results_dir))
+                self.assertEqual(set(data["statistics"]), set(COMMANDS))
+                self.assertEqual(data["errors"], [])
 
 
 class TestInterruptedRun(unittest.TestCase):

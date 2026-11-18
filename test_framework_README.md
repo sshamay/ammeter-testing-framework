@@ -42,7 +42,7 @@ The frozen `config/config.yaml` leaves `measurements_count`, `total_duration_sec
 pins the default at 20. Change `src/testing/defaults.yaml` (and that assertion) to alter it — never
 the frozen config.
 
-One `python -m src.testing` invocation is one run: a `RunResult` with a fresh UUID `run_id`
+One `run_test()` call is one run: a `RunResult` with a fresh UUID `run_id`
 (`storage.py:new_run_id()`). There is no global run-count setting; the committed sample is a single
 campaign, and with `AMMETER_WRITE_SAMPLE=1` the sample test executes two (one temp, one committed).
 
@@ -64,26 +64,22 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 python main.py
-python -m src.testing
-python -m src.testing --ammeter entes --no-save
-python -m src.testing --no-visualize
 python -m unittest discover -s tests -v
 AMMETER_WRITE_SAMPLE=1 python -m unittest tests.system.test_sample_results
 ```
 
 On Windows activate with `.venv\Scripts\activate`. `python main.py` is the frozen one-reading demo
-(Ctrl-C to stop); `python -m src.testing` is the framework CLI that measures all ammeters and saves a
-JSON run; `--no-visualize` skips CSV/text/PNG output; `python -m unittest discover -s tests -v` is the
-regression suite run after every commit; the last command writes another sample run under
-`results/sample/`. One representative sample campaign is committed as a deliverable there; any
-further runs create untracked files that should not be added to git.
+(Ctrl-C to stop). `python -m unittest discover -s tests -v` is the regression suite run after every
+commit; the last command writes another sample run under `results/sample/`. One representative sample
+campaign is committed as a deliverable there; any further runs create untracked files that should not
+be added to git.
 
-The framework CLI accepts `--config PATH`, `--ammeter NAME|all`, `--results-dir DIR`, `--no-save` and
-`--no-visualize`. It prints a precision/stability table and returns exit status **0** (all measured),
-**1** (some ammeters failed; the rest were archived) or **2** (configuration/analysis/storage failure).
-It never edits `main.py`. A broken ammeter is reported with its name, port and cause and does not erase
-the other measurements. No reference meter exists, so the report never claims trueness; CIRCUTOR's raw
-values are V·s, not amperes.
+The deliverable is the QA suite, not a command-line client: emulator startup lives in test fixtures,
+and campaigns are driven in-process through `AmmeterTestFramework.run_test()`. Failures are returned
+as typed entries in `RunResult.errors` (with ammeter, port and cause) while the other ammeters are
+still archived — there is no exit-status layer to maintain. The deliverable never edits `main.py`.
+No reference meter exists, so reports never claim trueness; CIRCUTOR's raw values are V·s, not
+amperes.
 
 ### Visualization (T-11)
 
@@ -91,15 +87,15 @@ A default run writes, under `<results-dir>/visualizations/<run_id>/`:
 
 - `<ammeter>.csv` — `index,current` rows of the raw series, one file per ammeter (stdlib `csv`);
 - `summary.txt` — the eight precision/stability metrics per ammeter, errors, skip notes and the
-  "no trueness" disclaimer; the same table is printed to stdout;
+  "no trueness" disclaimer;
 - `series.png` and `comparison.png` — **only if the optional `matplotlib` extra is importable**.
-  A missing or failing plot becomes a `Note:` in stdout and `summary.txt`, never a failed run.
+  A missing or failing plot becomes a `Note:` in `summary.txt`, never a failed run.
 
 Settings live under `analysis.visualization` in our `src/testing/defaults.yaml` (`enabled: true`,
 `backend: csv`, `plot_types: [series, comparison]`, `directory: visualizations`). The frozen
 `config/config.yaml` keeps `enabled: true` and `plot_types: null`; nulls are treated as "unset", so
-our defaults apply. `enabled: false` in the config or `--no-visualize` on the CLI disables all output.
-`requirements.txt` is unchanged by this increment.
+our defaults apply. `enabled: false` in the config disables all output. `requirements.txt` is
+unchanged by this increment.
 
 ### Faulty-adapter corpus (T-12)
 
@@ -132,13 +128,12 @@ AMMETER_WRITE_SAMPLE=1 python -m unittest tests.system.test_sample_results
 Without the env var the same test runs into a temp directory, keeping the regression suite
 read-only. The committed sample under `results/sample/` is the deliverable for "Sample test results";
 all other `results/` output (e.g. `results/runs/`) stays git-ignored, and additional sample runs are
-left untracked rather than committed.
-Note that `python -m src.testing` is a client: it needs emulator servers already listening on the
-configured ports; the test file starts them itself.
+left untracked rather than committed. The test starts its own emulator servers, so no externally
+running client or server is needed.
 
-The regression suite currently has 167 tests (~9 s): 5 skeleton tests, 10 config/sampling tests,
+The regression suite currently has 151 tests (~9 s): 5 skeleton tests, 10 config/sampling tests,
 43 adapter tests, 13 sampler tests, 19 analysis/storage tests, 19 framework wiring tests,
-12 CLI tests, 16 SUT contract tests, 4 system tests, 23 visualization tests, 1 sample-result test
+16 SUT contract tests, 4 system tests, 19 visualization tests, 1 sample-result test
 and 2 fault-corpus tests. The fix regressions formerly in `tests/test_fixes.py` were redistributed
 to the modules that own them when that file was removed.
 The adapter tests run one shared contract suite against real emulators and the fake. Sampler tests use an injected clock, so timing
@@ -146,8 +141,8 @@ tests finish in milliseconds. Storage tests write to temp directories and prove 
 no partial artifact. The framework tests inject fake adapters and one-shot connection doubles. The
 SUT contract tests cover documented value bounds, exact formula oracles from injected draws, the wire
 round-trip and the client success path. System tests check the artifact's golden key shape, prove no
-connection/thread leak across a batch, and run `python -m src.testing` twice from a clean `git
-archive HEAD` export with stderr asserted empty — no unclassified tracebacks.
+connection/thread leak across a batch, and run `run_test()` twice from a clean `git archive HEAD`
+export with stderr asserted empty — no unclassified tracebacks.
 
 ## Deviations from the original README
 
@@ -171,7 +166,7 @@ The root `README.md` is supplied by the exercise and is not modified. Its values
 | 4 | Ports and commands were hard-coded in `main.py` while `config/config.yaml` sat unused with its ammeter block commented out. | The config file is now the single source of truth: `main.py` reads each ammeter's port and command from it instead of repeating the values. At start-up each configured command is compared with the command the emulator actually accepts, so a mismatch stops the run immediately instead of quietly producing `ERR_UNKNOWN_COMMAND` later. |
 | 5 | `load_config()` gave a raw traceback for a missing, empty or malformed config file. | It now raises a clear error for each case: `FileNotFoundError` with the path, `ValueError` with the YAML parsing problem, and `ValueError` when the file is empty or is not a mapping. A valid file still returns the parsed mapping. |
 | 6 | Ctrl-C ended the run with a raw `KeyboardInterrupt` traceback, which looks the same as a crash and gives no way to tell "stopped by the user" from "failed". | `main()` is now wrapped in a `KeyboardInterrupt` guard that prints `Stopped by user.` and exits with status 0. Covered by a test that sends a real `SIGINT` to a subprocess running `main.py` and checks the output contains no traceback. |
-| 7 | An integrated run took the first reading from each ammeter and then failed every subsequent one with `Broken pipe`. | The sampler held one connection open for the whole batch, but the frozen emulators answer exactly one request and then close. The sampler now opens a fresh connection for each reading and each retry, and always closes it in a `finally`. A one-shot connection double in the unit tests and the live-emulator CLI test both pin this behaviour. |
+| 7 | An integrated run took the first reading from each ammeter and then failed every subsequent one with `Broken pipe`. | The sampler held one connection open for the whole batch, but the frozen emulators answer exactly one request and then close. The sampler now opens a fresh connection for each reading and each retry, and always closes it in a `finally`. A one-shot connection double in the unit tests and the live-emulator adapter tests both pin this behaviour. |
 
 ## Design considerations
 
@@ -179,6 +174,7 @@ The root `README.md` is supplied by the exercise and is not modified. Its values
 |---|---|---|
 | 1 | Fault injection lives only in `tests/`. | Each faulty adapter violates one adapter contract; the production adapters and the frozen emulators never hear about them. The SUT stays untouched and the detection score measures whether our oracles are watching, not whether the devices are broken. |
 | 2 | Commit exactly one sample campaign under `results/sample/`. | It is deliverable 3 ("Sample test results"), generated by the normal unittest command above. `.gitignore` keeps the rest of `results/` ignored; repeat runs produce new `run_id`s and are left untracked so no measurement output is routinely committed. |
+| 3 | No CLI entry point; campaigns run through `run_test()` from tests. | The deliverable is QA of the frozen emulators. A CLI duplicated that path and pulled argparse, printing and exit-status coverage into the suite; emulator lifecycle stays in fixtures and failures stay typed in `RunResult.errors`. |
 
 ## Platform and version caveats
 
