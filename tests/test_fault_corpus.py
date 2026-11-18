@@ -15,7 +15,7 @@ from src.testing.sampler import SamplingSettings
 from src.testing.test_framework import AmmeterTestFramework
 
 from tests.faulty_adapters import FAULT_CASES, new_adapter
-from tests.unit.test_framework import COMMANDS, FakeClock, GOOD, NAMES, write_config
+from tests.support import COMMANDS, GOOD, NAMES, FakeClock, write_config
 
 PEERS = ("entes", "circutor")
 

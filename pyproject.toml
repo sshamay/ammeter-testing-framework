@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ammeter-testing-framework"
+version = "0.1.0"
+description = "Config-driven QA framework and regression suite for the ammeter emulators"
+requires-python = ">=3.10"
+dependencies = ["pyyaml>=6.0"]
+
+# The supplied main.py imports `src.utils.config`, so `src` remains a real top-level
+# package. These settings keep every existing `src.*` import path unchanged.
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+exclude = ["*__pycache__*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+"src.testing" = ["defaults.yaml"]

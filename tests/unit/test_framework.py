@@ -10,54 +10,19 @@ import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 
-import yaml
-
 from src.testing.adapters.fake import FakeAmmeterAdapter
 from src.testing.analysis import Statistics
 from src.testing.errors import ConfigError, ParseError, TransportError, describe
 from src.testing.sampler import SamplingSettings
 from src.testing.storage import RunResult, list_runs, load_run
 from src.testing.test_framework import AmmeterTestFramework, format_failure
-from tests.support import COMMANDS, NAMES, FakeClock
-
-GOOD = {
-    "greenlee": (4.0, 4.1, 3.9),
-    "entes": (5.0, 5.1, 4.9),
-    "circutor": (0.02, 0.021, 0.019),
-}
-
-
-def write_config(directory, count=3, frequency=10):
-    config = {
-        "testing": {
-            "sampling": {
-                "measurements_count": count,
-                "total_duration_seconds": None,
-                "sampling_frequency_hz": frequency,
-            }
-        },
-        "ammeters": {
-            name: {"port": 5001 + index, "command": COMMANDS[name]}
-            for index, name in enumerate(NAMES)
-        },
-        "analysis": {"statistical_metrics": None},
-        "result_management": {"storage": None},
-    }
-    path = Path(directory) / "config.yaml"
-    path.write_text(yaml.safe_dump(config), encoding="utf-8")
-    return str(path)
-
-
-def scripted_adapter_class(scripts):
-    """An adapter class whose per-ammeter readings come from ``scripts``."""
-
-    class ScriptedAdapter(FakeAmmeterAdapter):
-        def __init__(self, name, port, command, host="fake", **kwargs):
-            super().__init__(
-                name=name, values=scripts[name], port=port, command=command, host=host
-            )
-
-    return ScriptedAdapter
+from tests.support import (
+    GOOD,
+    NAMES,
+    FakeClock,
+    scripted_adapter_class,
+    write_config,
+)
 
 
 def one_shot_adapter_class(scripts):

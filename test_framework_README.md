@@ -22,7 +22,7 @@ pip install -r requirements.txt
 | `python -m unittest tests.test_fault_corpus -v` | Meta-test: 7/7 detection, 0/7 false positives | Manual, also part of discovery |
 | `python main.py` | Frozen demo: starts the emulators and takes one reading from each — **not** the test runner (Ctrl-C to stop) | Manual; also the target of the Ctrl-C test |
 
-Every run is human-invoked: there is no CI workflow, Makefile, tox or pytest configuration. Each `test_*.py` also ends in `if __name__ == "__main__": unittest.main(...)`, but direct `python tests/.../test_x.py` is unreliable because tests import helpers as `from tests.support import ...`; use `python -m unittest <module>` from the repository root.
+Every run is human-invoked: there is no CI workflow, Makefile, tox or pytest configuration (`pyproject.toml` declares packaging metadata only). Each `test_*.py` also ends in `if __name__ == "__main__": unittest.main(...)`, but direct `python tests/.../test_x.py` is unreliable because tests import helpers as `from tests.support import ...`; use `python -m unittest <module>` from the repository root.
 
 The deliverable is the QA suite, not a command-line client: emulator startup lives in test fixtures, campaigns run in-process through `AmmeterTestFramework.run_test()`, and failures are returned as typed entries in `RunResult.errors` (with ammeter, port and cause) while the other ammeters are still archived.
 
@@ -32,6 +32,7 @@ The deliverable is the QA suite, not a command-line client: emulator startup liv
 |---|---|
 | Interpreter used | Python 3.14.6 (dev virtualenv `.venv/`) |
 | Install command | `pip install -r requirements.txt` |
+| Optional editable install | `pip install -e .` uses `pyproject.toml`; it keeps every `src.*` import path and includes `src/testing/defaults.yaml` as package data. |
 | Libraries installed | **PyYAML 6.0.3** in a fresh venv — needed by `src/utils/config.py` for `config/config.yaml` |
 | Everything else | Python standard library: `socket`, `threading`, `statistics`, `json`, `logging`, `csv`, `unittest` |
 | Removed from `requirements.txt` | `numpy`, `scipy`, `seaborn`, `pandas`, `matplotlib` — none was imported anywhere; dependencies are kept minimal. |
@@ -43,7 +44,7 @@ Verified: a fresh virtualenv created from `requirements.txt` alone can import `y
 
 | Frozen supplied files (read-only) | Editable files |
 |---|---|
-| `Ammeters/*` (emulators and client), `main.py`, `config/config.yaml`, root `README.md`, `src/utils/config.py` | Everything under `src/testing/` and `tests/` (including supplied test files), plus `src/utils/logger.py` and `requirements.txt` |
+| `Ammeters/*` (emulators and client), `main.py`, `config/config.yaml`, root `README.md`, `src/utils/config.py` | Everything under `src/testing/` and `tests/` (including supplied test files), plus `src/utils/logger.py`, `requirements.txt` and the new `pyproject.toml` |
 
 The supplied `config/config.yaml` has `null` sampling values. We do not edit it: the framework merges its own defaults (in `src/testing/defaults.yaml`) over it before validating. Any change to `requirements.txt` is recorded in the environment table above.
 
@@ -99,7 +100,7 @@ The classifier decision point is pinned separately by `tests/unit/test_sampler.p
 |---|---|---|---|
 | Frozen config | `config/config.yaml` | Sample test, framework wiring | Ports 5001–5003 and the exact commands; sampling values are `null` |
 | Framework defaults | `src/testing/defaults.yaml` | All framework tests | 20 readings at 10 Hz, retry 2, backoff `0.05 × 2^i`, visualization settings |
-| Temp generated configs | `write_config()` in `tests/unit/test_framework.py` and inline in the system tests | Unit, system | Small counts (1–5) and fake ports, so tests stay exact and fast |
+| Temp generated configs | `write_config()` in `tests/support.py` and inline in the system tests | Unit, system | Small counts (1–5) and fake ports, so tests stay exact and fast |
 | Scripted fake adapters | `FakeAmmeterAdapter`, the `GOOD` tuples, `tests/faulty_adapters.py` | Unit, fault corpus | Floats **or exception instances**, replayed in order |
 | Boundary doubles | `patch("socket.socket", side_effect=...)`, `patch(CREATE_CONNECTION, ...)`, `os.replace` failure, fake pyplot, `time.sleep` guard | Unit, integration | Injected faults and exact call assertions; no real socket, sleep or disk write |
 | Recorded RNG draws | `record_draws()` in `tests/integration/test_sut_contract.py` | Formula oracles | Keeps the real `random.uniform` draw but records it → exact `V/R`, `B×F`, `Σv·Δt` |
