@@ -1,0 +1,5 @@
+ammeter         n       mean     median     stddev        min        max        CV      drift
+circutor       20     0.0340     0.0315     0.0174     0.0037     0.0629    0.5106    +0.0070
+entes          20    58.4851    47.3220    37.1107    11.8863   135.0100    0.6345    -5.2541
+greenlee       20     0.7912     0.1232     2.4829     0.0226    11.5185    3.1382    -1.0437
+Precision/stability only (no reference meter); CIRCUTOR values are V*s, not amperes.

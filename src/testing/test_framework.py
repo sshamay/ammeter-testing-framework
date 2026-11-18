@@ -1,7 +1,7 @@
 """Top-level orchestration: configuration → sampling → statistics → archived result.
 
 ``run_test`` never prints and never calls ``sys.exit``: it returns a typed :class:`RunResult` so the
-same API can be driven by the CLI, by tests, and by any future caller. Per-ammeter failures are
+same API can be driven by tests, scripts, and any future caller. Per-ammeter failures are
 recorded and the remaining ammeters are still measured — one broken device must not erase the other
 results.
 """
