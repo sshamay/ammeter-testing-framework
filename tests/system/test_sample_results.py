@@ -4,8 +4,8 @@ No separate CLI process and no change to the frozen ``main.py``: this file impor
 from it, starts the three emulators in threads, and drives ``AmmeterTestFramework`` directly.
 
 By default the campaign runs into a temp directory, so the regression suite stays read-only. Set
-``AMMETER_WRITE_SAMPLE=1`` to write the same artifacts under ``results/sample/`` for local inspection.
-All of ``results/`` is git-ignored, so no measurement output is ever committed:
+``AMMETER_WRITE_SAMPLE=1`` to write the same artifacts under ``results/sample/``. One such campaign
+is the committed "Sample test results" deliverable; further runs are left untracked:
 
     AMMETER_WRITE_SAMPLE=1 python -m unittest tests.system.test_sample_results
 """
