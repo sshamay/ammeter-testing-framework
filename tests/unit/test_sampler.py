@@ -11,10 +11,38 @@ from contextlib import redirect_stdout
 from unittest.mock import patch
 
 from src.testing.adapters import FakeAmmeterAdapter
-from src.testing.errors import ConfigError, SampleTimeout, TransportError
-from src.testing.sampler import Sampler, SamplingSettings, load_sampler_settings
+from src.testing.errors import (
+    AnalysisError,
+    ConfigError,
+    ParseError,
+    ProtocolError,
+    SampleTimeout,
+    StorageError,
+    TransportError,
+    describe,
+)
+from src.testing.sampler import (
+    Sampler,
+    SamplingSettings,
+    _is_retryable,
+    load_sampler_settings,
+)
 from src.testing.sampling import resolve_sampling
 from tests.support import FakeClock
+
+
+class FlakyConnectAdapter(FakeAmmeterAdapter):
+    """Fails the first connect with a transient timeout, then obeys the contract."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.connects = 0
+
+    def open(self, timeout=None):
+        self.connects += 1
+        if self.connects == 1:
+            raise SampleTimeout(describe(self.name, self.port, self.host, "connect timed out"))
+        super().open(timeout)
 
 
 def plan(count=None, duration=None, frequency=None):
@@ -74,23 +102,48 @@ class TestSamplerSettings(unittest.TestCase):
         self.assertEqual(settings.timeout, 0.5)
         self.assertEqual(settings.max_attempts, 2)
         self.assertAlmostEqual(settings.backoff_seconds, 0.05)
+        self.assertAlmostEqual(settings.backoff_multiplier, 2.0)
 
     def test_settings_can_be_overridden_from_config_mapping(self):
         settings = SamplingSettings.from_config(
             {
                 "timeout_per_sample_seconds": 2,
-                "retry": {"max_attempts": 3, "backoff_seconds": 0.2},
+                "retry": {
+                    "max_attempts": 3,
+                    "backoff_seconds": 0.2,
+                    "backoff_multiplier": 3.0,
+                },
             }
         )
         self.assertEqual(settings.timeout, 2.0)
         self.assertEqual(settings.max_attempts, 3)
         self.assertAlmostEqual(settings.backoff_seconds, 0.2)
+        self.assertAlmostEqual(settings.backoff_multiplier, 3.0)
 
     def test_invalid_settings_raise_config_error(self):
-        with self.assertRaises(ConfigError):
-            SamplingSettings.from_config({"retry": {"max_attempts": 0}})
-        with self.assertRaises(ConfigError):
-            SamplingSettings.from_config({"timeout_per_sample_seconds": 0})
+        for config in (
+            {"retry": {"max_attempts": 0}},
+            {"timeout_per_sample_seconds": 0},
+            {"retry": {"backoff_seconds": -1}},
+            {"retry": {"backoff_multiplier": 0.5}},
+        ):
+            with self.subTest(config=config), self.assertRaises(ConfigError):
+                SamplingSettings.from_config(config)
+
+    def test_transient_errors_are_retryable_permanent_ones_are_not(self):
+        cases = (
+            (SampleTimeout("timeout"), True),
+            (TransportError("connect failed"), True),
+            (ParseError("non-numeric reply"), True),
+            (ProtocolError("empty reply"), True),
+            (ConfigError("bad config"), False),
+            (AnalysisError("no statistics"), False),
+            (StorageError("disk full"), False),
+            (ValueError("raw adapter bug"), False),
+        )
+        for error, expected in cases:
+            with self.subTest(error=type(error).__name__):
+                self.assertIs(_is_retryable(error), expected)
 
     def test_open_uses_the_configured_timeout(self):
         adapter = FakeAmmeterAdapter(values=(1.0,))
@@ -129,6 +182,55 @@ class TestSamplerFailures(unittest.TestCase):
         self.assertIs(series.errors[0], failure)
         self.assertEqual(series.attempts, 2)
         self.assertEqual(clock.sleeps, [0.05])
+
+    def test_retry_backoff_follows_exponential_schedule(self):
+        failures = tuple(SampleTimeout(f"failure {index}") for index in range(3))
+        adapter = FakeAmmeterAdapter("fake", values=failures + (9.0,))
+        clock = FakeClock()
+        settings = SamplingSettings(
+            max_attempts=4, backoff_seconds=0.1, backoff_multiplier=2.0
+        )
+
+        series = Sampler(adapter, plan(count=1, frequency=10), settings, clock).run()
+
+        self.assertEqual(series.values, (9.0,))
+        self.assertEqual(len(series.errors), 3)
+        self.assertEqual(series.attempts, 4)
+        self.assertEqual(adapter.reads, 4)
+        self.assertEqual(clock.sleeps, [0.1, 0.2, 0.4])
+        self.assertAlmostEqual(clock.now(), 0.7)
+        self.assertFalse(adapter.is_open)
+
+    def test_permanent_error_fails_fast_without_backoff(self):
+        permanent = ConfigError("device config rejected")
+        adapter = FakeAmmeterAdapter("fake", values=(permanent,))
+        clock = FakeClock()
+
+        with self.assertRaises(ConfigError) as context:
+            Sampler(
+                adapter,
+                plan(count=1, frequency=10),
+                SamplingSettings(max_attempts=3, backoff_seconds=0.1),
+                clock,
+            ).run()
+
+        self.assertIs(context.exception, permanent)
+        self.assertEqual(adapter.reads, 1)
+        self.assertEqual(clock.sleeps, [])
+        self.assertFalse(adapter.is_open)
+
+    def test_connect_failure_is_retried_with_the_same_schedule(self):
+        adapter = FlakyConnectAdapter("fake", values=(7.0,))
+        clock = FakeClock()
+
+        series = Sampler(adapter, plan(count=1, frequency=10), clock=clock).run()
+
+        self.assertEqual(series.values, (7.0,))
+        self.assertEqual(series.attempts, 2)
+        self.assertEqual(adapter.connects, 2)
+        self.assertEqual(adapter.reads, 1)
+        self.assertEqual(clock.sleeps, [0.05])
+        self.assertFalse(adapter.is_open)
 
     def test_exhausted_retries_raise_last_error(self):
         first = TransportError("first")

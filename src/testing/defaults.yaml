@@ -10,6 +10,7 @@ testing:
     retry:
       max_attempts: 2
       backoff_seconds: 0.05
+      backoff_multiplier: 2.0
 
 analysis:
   visualization:

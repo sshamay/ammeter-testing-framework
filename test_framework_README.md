@@ -34,6 +34,7 @@ its own defaults (in `src/testing/defaults.yaml`) over it before validating. Any
 | Measurements per campaign (the readings behind CV/drift) | `src/testing/defaults.yaml` → `measurements_count` | **20 per ammeter** |
 | Sampling frequency | `src/testing/defaults.yaml` → `sampling_frequency_hz` | 10 Hz → derived duration 2 s |
 | Retries per reading | `src/testing/defaults.yaml` → `retry.max_attempts` | 2 attempts |
+| Retry backoff | `src/testing/defaults.yaml` → `retry.backoff_seconds`, `retry.backoff_multiplier` | 0.05 s × 2^retry index → 0.05, 0.10, 0.20, … s |
 
 The frozen `config/config.yaml` leaves `measurements_count`, `total_duration_seconds` and
 `sampling_frequency_hz` as `null`. `sampling.py:load_sampling_config()` merges our defaults over it
@@ -131,8 +132,8 @@ all other `results/` output (e.g. `results/runs/`) stays git-ignored, and additi
 left untracked rather than committed. The test starts its own emulator servers, so no externally
 running client or server is needed.
 
-The regression suite currently has 151 tests (~9 s): 5 skeleton tests, 10 config/sampling tests,
-43 adapter tests, 13 sampler tests, 19 analysis/storage tests, 19 framework wiring tests,
+The regression suite currently has 155 tests (~9 s): 5 skeleton tests, 10 config/sampling tests,
+43 adapter tests, 17 sampler tests, 19 analysis/storage tests, 19 framework wiring tests,
 16 SUT contract tests, 4 system tests, 19 visualization tests, 1 sample-result test
 and 2 fault-corpus tests. The fix regressions formerly in `tests/test_fixes.py` were redistributed
 to the modules that own them when that file was removed.
@@ -143,6 +144,25 @@ SUT contract tests cover documented value bounds, exact formula oracles from inj
 round-trip and the client success path. System tests check the artifact's golden key shape, prove no
 connection/thread leak across a batch, and run `run_test()` twice from a clean `git archive HEAD`
 export with stderr asserted empty — no unclassified tracebacks.
+
+### Coverage matrix (happy / boundary / error / failure)
+
+Filled before the reliability increment: each behaviour gets a row, each applicable category a cell
+with a representative test id (`module::test`). `—` means the category does not apply to that layer.
+The retry column is where transient faults must be scripted, never random.
+
+| Behaviour | Happy | Boundary | Error | Failure / retry |
+|---|---|---|---|---|
+| Sampling plan | `tests/unit/test_sampler.py::test_exact_count_from_count_and_frequency` | `tests/unit/test_config_sampling.py::test_all_18_config_cases` | `tests/unit/test_config_sampling.py::test_invalid_config_opens_no_socket` | — |
+| Sampler loop | `tests/unit/test_sampler.py::test_single_reading_does_not_sleep` | `tests/unit/test_sampler.py::test_count_derived_from_duration_and_frequency` | `tests/unit/test_sampler.py::test_permanent_error_fails_fast_without_backoff` | `tests/unit/test_sampler.py::test_retry_backoff_follows_exponential_schedule`, `test_connect_failure_is_retried_with_the_same_schedule` |
+| Adapter ↔ emulator | `tests/integration/test_adapters.py::test_open_read_close_returns_float` | `tests/integration/test_adapters.py::test_truncated_command_is_rejected_by_each_emulator` | `tests/integration/test_adapters.py::test_dead_port_raises_transport_error_naming_endpoint` | `tests/integration/test_adapters.py::test_reopen_yields_another_reading` |
+| Campaign orchestration | `tests/unit/test_framework.py::test_run_test_returns_typed_result_per_ammeter` | `tests/unit/test_framework.py::test_single_ammeter_selection` | `tests/unit/test_framework.py::test_broken_ammeter_does_not_erase_the_other_two` | `tests/unit/test_framework.py::test_recovered_transient_does_not_fail_the_run`, `tests/system/test_end_to_end.py::test_no_connection_or_thread_leak_across_a_batch` |
+| Storage | `tests/unit/test_storage.py::test_save_list_load_round_trip` | `tests/unit/test_storage.py::test_two_runs_in_one_second_have_different_ids` | `tests/unit/test_storage.py::test_corrupt_artifact_raises_storage_error` | `tests/unit/test_storage.py::test_write_failure_leaves_no_partial_artifact`, `tests/system/test_end_to_end.py::test_run_test_runs_twice_from_a_clean_git_export` |
+| Visualization | `tests/unit/test_visualization.py::test_enabled_writes_all_outputs` | `tests/unit/test_visualization.py::test_empty_plot_types_render_nothing` | `tests/unit/test_visualization.py::test_invalid_settings_raise_config_error` | `tests/unit/test_visualization.py::test_absent_matplotlib_skips_cleanly`, `test_plot_render_failure_is_a_note_not_a_crash` |
+
+The classifier decision point is pinned separately by
+`tests/unit/test_sampler.py::test_transient_errors_are_retryable_permanent_ones_are_not`: transport,
+timeout, protocol and parse errors retry; config, analysis and storage errors fail fast.
 
 ## Deviations from the original README
 
@@ -175,6 +195,7 @@ The root `README.md` is supplied by the exercise and is not modified. Its values
 | 1 | Fault injection lives only in `tests/`. | Each faulty adapter violates one adapter contract; the production adapters and the frozen emulators never hear about them. The SUT stays untouched and the detection score measures whether our oracles are watching, not whether the devices are broken. |
 | 2 | Commit exactly one sample campaign under `results/sample/`. | It is deliverable 3 ("Sample test results"), generated by the normal unittest command above. `.gitignore` keeps the rest of `results/` ignored; repeat runs produce new `run_id`s and are left untracked so no measurement output is routinely committed. |
 | 3 | No CLI entry point; campaigns run through `run_test()` from tests. | The deliverable is QA of the frozen emulators. A CLI duplicated that path and pulled argparse, printing and exit-status coverage into the suite; emulator lifecycle stays in fixtures and failures stay typed in `RunResult.errors`. |
+| 4 | Retry only transient faults, with exponential backoff. | Connect/I/O timeouts and bad replies can recover; config, analysis and storage errors cannot. A typed classifier keeps attempts finite, and the injected clock asserts the exact 0.05 → 0.10 → 0.20 s schedule in microseconds. |
 
 ## Platform and version caveats
 

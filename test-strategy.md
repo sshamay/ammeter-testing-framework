@@ -44,6 +44,7 @@ can start after T-09; T-14 is last.
 | API | `AmmeterAdapter`: `open(timeout)`, `read_current() -> float`, `close()`, context manager; never prints. Same contract test for all devices + fake. |
 | Config | Ports/commands from `config.yaml`; `build_emulators()` guards drift. Count + frequency win, duration derived; >1 % conflict → `ConfigError`; 1000 Hz ceiling (configurable). |
 | Timing | Injected clock in our code; no wall-clock assertions. |
+| Retries | Only transient faults (`TransportError`/`SampleTimeout`, `ProtocolError`/`ParseError`) retry; config/analysis/storage errors fail fast. Backoff is exponential: `backoff_seconds × backoff_multiplier ** retry_index` (0.05 s × 2 by default); the exact schedule is asserted with a fake clock. |
 | Errors | Typed: `ConfigError`, `TransportError`/`SampleTimeout`, `ProtocolError`/`ParseError`, `StorageError`, `AnalysisError`; message names ammeter, port, cause. Report in `RunResult.errors`, keep other results; no exit-status layer. |
 | Results | Frozen `RunResult` JSON: ID, UTC time, config snapshot, stats, samples, errors. |
 | Accuracy | No reference → compare precision/stability only. CIRCUTOR outputs V·s, so raw values aren't comparable as amperes. |
@@ -123,7 +124,7 @@ Determinism depends on the setup, not the SUT:
 
 - [x] `python main.py` still works unchanged, and `run_test()` works from a clean clone, twice.
 - [ ] All spec capabilities have a test and a committed sample artifact (sample artifact done; spec → evidence map still open).
-- [x] Error paths raise typed errors; no silent "No data received".
+- [x] Error paths raise typed errors; no silent "No data received"; retries are classified and backoff is exponential.
 - [x] `git diff` on `Ammeters/` contains only fixes already logged — no test-only edits.
 - [x] No push without explicit approval.
 
