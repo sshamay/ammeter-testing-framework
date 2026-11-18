@@ -27,6 +27,25 @@ The supplied `config/config.yaml` has `null` sampling values. We do not edit it:
 its own defaults (in `src/testing/defaults.yaml`) over it before validating. Any change to
 `requirements.txt` is recorded in the "Environment and installed libraries" table above.
 
+### Sampling settings: where the numbers live
+
+| Meaning | Where it is defined | Effective value |
+|---|---|---|
+| Measurements per campaign (the readings behind CV/drift) | `src/testing/defaults.yaml` → `measurements_count` | **20 per ammeter** |
+| Sampling frequency | `src/testing/defaults.yaml` → `sampling_frequency_hz` | 10 Hz → derived duration 2 s |
+| Retries per reading | `src/testing/defaults.yaml` → `retry.max_attempts` | 2 attempts |
+
+The frozen `config/config.yaml` leaves `measurements_count`, `total_duration_seconds` and
+`sampling_frequency_hz` as `null`. `sampling.py:load_sampling_config()` merges our defaults over it
+(null = unset), `resolve_sampling()` validates and derives duration/count when one is missing, and
+`sampler.py` loops `range(plan.count)` to take the readings. `tests/system/test_sample_results.py`
+pins the default at 20. Change `src/testing/defaults.yaml` (and that assertion) to alter it — never
+the frozen config.
+
+One `python -m src.testing` invocation is one run: a `RunResult` with a fresh UUID `run_id`
+(`storage.py:new_run_id()`). There is no global run-count setting; the committed sample is a single
+campaign, and with `AMMETER_WRITE_SAMPLE=1` the sample test executes two (one temp, one committed).
+
 Work is delivered as a progressive rollout, one branch per increment. `foundation/skeleton-and-docs`
 holds only the foundation/skeleton/docs tasks (T-01…T-03); each later increment is stacked on the
 previous one (`feature/config-driven-sampling` → `feature/ammeter-adapter-layer` →
