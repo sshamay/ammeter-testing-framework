@@ -82,6 +82,24 @@ still archived — there is no exit-status layer to maintain. The deliverable ne
 No reference meter exists, so reports never claim trueness; CIRCUTOR's raw values are V·s, not
 amperes.
 
+### Automated test entry points
+
+The table below is the consolidated index of the commands in active use for this deliverable; the
+sections that follow expand on the special cases.
+
+| Command | Purpose | Trigger |
+|---|---|---|
+| `python -m unittest discover -s tests` | Full regression suite (155 tests, ~9 s) from the repository root | Manual — after every commit |
+| `python -m unittest tests.system.test_sample_results` | One campaign into a temp directory (read-only default) | Manual, or as part of discovery |
+| `AMMETER_WRITE_SAMPLE=1 python -m unittest tests.system.test_sample_results` | The same campaign twice: temp + `results/sample/` | Manual, env-var gated (`WRITE_SAMPLE` in `tests/system/test_sample_results.py`) |
+| `python -m unittest tests.test_fault_corpus -v` | Meta-test: 7/7 detection, 0/7 false positives | Manual, also part of discovery |
+| `python main.py` | Frozen demo: starts the emulators and takes one reading from each — **not** the test runner | Manual; also the target of the Ctrl-C test |
+
+Every run is human-invoked: there is no CI workflow, Makefile, tox or pytest configuration. Each
+`test_*.py` also ends in `if __name__ == "__main__": unittest.main(...)`, but direct
+`python tests/.../test_x.py` is unreliable because tests import helpers as
+`from tests.support import ...`; use `python -m unittest <module>` from the repository root.
+
 ### Visualization (T-11)
 
 A default run writes, under `<results-dir>/visualizations/<run_id>/`:
@@ -163,6 +181,25 @@ The retry column is where transient faults must be scripted, never random.
 The classifier decision point is pinned separately by
 `tests/unit/test_sampler.py::test_transient_errors_are_retryable_permanent_ones_are_not`: transport,
 timeout, protocol and parse errors retry; config, analysis and storage errors fail fast.
+
+### Test data sources
+
+| Source | Defined in | Used by | Shape / assertions |
+|---|---|---|---|
+| Frozen config | `config/config.yaml` | Sample test, framework wiring | Ports 5001–5003 and the exact commands; sampling values are `null` |
+| Framework defaults | `src/testing/defaults.yaml` | All framework tests | 20 readings at 10 Hz, retry 2, backoff `0.05 × 2^i`, visualization settings |
+| Temp generated configs | `write_config()` in `tests/unit/test_framework.py` and inline in the system tests | Unit, system | Small counts (1–5) and fake ports, so tests stay exact and fast |
+| Scripted fake adapters | `FakeAmmeterAdapter`, the `GOOD` tuples, `tests/faulty_adapters.py` | Unit, fault corpus | Floats **or exception instances**, replayed in order |
+| Boundary doubles | `patch("socket.socket", side_effect=...)`, `patch(CREATE_CONNECTION, ...)`, `os.replace` failure, fake pyplot, `time.sleep` guard | Unit, integration | Injected faults and exact call assertions; no real socket, sleep or disk write |
+| Recorded RNG draws | `record_draws()` in `tests/integration/test_sut_contract.py` | Formula oracles | Keeps the real `random.uniform` draw but records it → exact `V/R`, `B×F`, `Σv·Δt` |
+| Live emulator output | Frozen `Ammeters/` + `src/utils/Utils.py` (`random.uniform`) | L0 contract, adapters, sample | Unseeded random floats → **bounds only**: Greenlee 0.01–100, ENTES 5–200, CIRCUTOR 0.001–0.1 |
+| Committed evidence | `results/sample/20261118T103405Z-197ff68345e6/` | Deliverable, not an input | One JSON, three CSVs, `summary.txt`, two PNGs; 20 samples per ammeter, `errors: []` |
+
+The assertion policy follows `test-strategy.md`: injected `side_effect=[...]` gives known operands so
+the value is asserted **exactly**; a recording `side_effect` around the real generator gives exact
+draws so the **formula** is asserted exactly; `wraps=` supports call count/order, never the value;
+unmocked sockets are checked against their documented bounds only. No reference meter exists, so
+accuracy reporting is limited to precision/stability (CV/drift).
 
 ## Deviations from the original README
 
