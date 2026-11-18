@@ -16,7 +16,7 @@ pip install -r requirements.txt
 
 | Command | Purpose | Trigger |
 |---|---|---|
-| `python -m unittest discover -s tests` | Full regression suite (165 tests, ~9 s) | Manual — after every commit |
+| `python -m unittest discover -s tests` | Full regression suite (166 tests, ~14 s) | Manual — after every commit |
 | `python -m unittest tests.system.test_sample_results` | One campaign into a temp directory (read-only default) | Manual, or as part of discovery |
 | `AMMETER_WRITE_SAMPLE=1 python -m unittest tests.system.test_sample_results` | The same campaign twice: temp + `results/sample/` | Manual, env-var gated (`WRITE_SAMPLE` in `tests/system/test_sample_results.py`) |
 | `python -m unittest tests.test_fault_corpus -v` | Meta-test: 7/7 detection, 0/7 false positives | Manual, also part of discovery |
@@ -76,9 +76,9 @@ The root `README.md` is supplied by the exercise and is not modified. Its values
 
 ## What the suite covers
 
-The regression suite has 165 tests (~9 s): 5 skeleton, 10 config/sampling, 43 adapter, 17 sampler, 24 analysis/storage, 21 framework wiring, 16 SUT contract, 5 system, 21 visualization, 1 sample-result and 2 fault-corpus tests. The fix regressions formerly in `tests/test_fixes.py` were redistributed to the modules that own them.
+The regression suite has 166 tests (~14 s): 5 skeleton, 10 config/sampling, 43 adapter, 17 sampler, 24 analysis/storage, 21 framework wiring, 16 SUT contract, 6 system, 21 visualization, 1 sample-result and 2 fault-corpus tests. The fix regressions formerly in `tests/test_fixes.py` were redistributed to the modules that own them.
 
-Adapter tests run one shared contract suite against real emulators and the fake. Sampler tests use an injected clock, so timing tests finish in milliseconds. Storage tests write to temp directories and prove atomic writes leave no partial artifact. Framework tests inject fake adapters and one-shot connection doubles, and prove a **fourth ammeter** is measured and archived when only a config entry and a contract-honouring adapter are added — no production code changes. The SUT contract tests cover documented value bounds, exact formula oracles from injected draws, the wire round-trip and the client success path. System tests check the artifact's golden key shape, trace one recovered fault from sampling through the JSON artifact to `summary.txt`, prove no connection/thread leak across a batch, and run `run_test()` twice from a clean `git archive HEAD` export with stderr asserted empty — no unclassified tracebacks.
+Adapter tests run one shared contract suite against real emulators and the fake. Sampler tests use an injected clock, so timing tests finish in milliseconds. Storage tests write to temp directories and prove atomic writes leave no partial artifact. Framework tests inject fake adapters and one-shot connection doubles, and prove a **fourth ammeter** is measured and archived when only a config entry and a contract-honouring adapter are added — no production code changes. The SUT contract tests cover documented value bounds, exact formula oracles from injected draws, the wire round-trip and the client success path. System tests check the artifact's golden key shape, trace one recovered fault from sampling through the JSON artifact to `summary.txt`, prove no connection/thread leak across a batch, run the frozen `main.py` to completion and assert one returned reading per ammeter, and run `run_test()` twice from a clean `git archive HEAD` export with stderr asserted empty — no unclassified tracebacks.
 
 ### Coverage matrix (happy / boundary / error / failure)
 
@@ -89,7 +89,7 @@ Each behaviour gets a row, each applicable category a cell with a representative
 | Sampling plan | `tests/unit/test_sampler.py::test_exact_count_from_count_and_frequency` | `tests/unit/test_config_sampling.py::test_all_18_config_cases` | `tests/unit/test_config_sampling.py::test_invalid_config_opens_no_socket` | — |
 | Sampler loop | `tests/unit/test_sampler.py::test_single_reading_does_not_sleep` | `tests/unit/test_sampler.py::test_count_derived_from_duration_and_frequency` | `tests/unit/test_sampler.py::test_permanent_error_fails_fast_without_backoff` | `tests/unit/test_sampler.py::test_retry_backoff_follows_exponential_schedule`, `test_connect_failure_is_retried_with_the_same_schedule` |
 | Adapter ↔ emulator | `tests/integration/test_adapters.py::test_open_read_close_returns_float` | `tests/integration/test_adapters.py::test_truncated_command_is_rejected_by_each_emulator` | `tests/integration/test_adapters.py::test_dead_port_raises_transport_error_naming_endpoint` | `tests/integration/test_adapters.py::test_reopen_yields_another_reading` |
-| Campaign orchestration | `tests/unit/test_framework.py::test_run_test_returns_typed_result_per_ammeter`, `test_fourth_ammeter_via_config_and_adapter_only` | `tests/unit/test_framework.py::test_single_ammeter_selection` | `tests/unit/test_framework.py::test_broken_ammeter_does_not_erase_the_other_two` | `tests/unit/test_framework.py::test_recovered_transient_does_not_fail_the_run`, `test_recovered_errors_are_persisted_in_the_artifact`, `tests/system/test_end_to_end.py::test_transient_recovery_reaches_artifact_and_summary` |
+| Campaign orchestration | `tests/unit/test_framework.py::test_run_test_returns_typed_result_per_ammeter`, `test_fourth_ammeter_via_config_and_adapter_only`, `tests/system/test_end_to_end.py::test_main_returns_one_reading_per_ammeter` | `tests/unit/test_framework.py::test_single_ammeter_selection` | `tests/unit/test_framework.py::test_broken_ammeter_does_not_erase_the_other_two` | `tests/unit/test_framework.py::test_recovered_transient_does_not_fail_the_run`, `test_recovered_errors_are_persisted_in_the_artifact`, `tests/system/test_end_to_end.py::test_transient_recovery_reaches_artifact_and_summary` |
 | Storage | `tests/unit/test_storage.py::test_save_list_load_round_trip` | `tests/unit/test_storage.py::test_two_runs_in_one_second_have_different_ids` | `tests/unit/test_storage.py::test_corrupt_artifact_raises_storage_error` | `tests/unit/test_storage.py::test_write_failure_leaves_no_partial_artifact`, `tests/system/test_end_to_end.py::test_run_test_runs_twice_from_a_clean_git_export` |
 | Visualization | `tests/unit/test_visualization.py::test_enabled_writes_all_outputs` | `tests/unit/test_visualization.py::test_empty_plot_types_render_nothing` | `tests/unit/test_visualization.py::test_invalid_settings_raise_config_error` | `tests/unit/test_visualization.py::test_absent_matplotlib_skips_cleanly`, `test_plot_render_failure_is_a_note_not_a_crash` |
 
@@ -112,7 +112,7 @@ This proves the tests detect the faults they claim to; it is a **curated** set, 
 | Boundary doubles | `patch("socket.socket", side_effect=...)`, `patch(CREATE_CONNECTION, ...)`, `os.replace` failure, fake pyplot, `time.sleep` guard | Unit, integration | Injected faults and exact call assertions; no real socket, sleep or disk write |
 | Recorded RNG draws | `record_draws()` in `tests/integration/test_sut_contract.py` | Formula oracles | Keeps the real `random.uniform` draw but records it → exact `V/R`, `B×F`, `Σv·Δt` |
 | Live emulator output | Frozen `Ammeters/` + `src/utils/Utils.py` (`random.uniform`) | Contract tests, adapters, sample | Unseeded random floats → **bounds only**: Greenlee 0.01–100, ENTES 5–200, CIRCUTOR 0.001–0.1 |
-| Committed evidence | `results/sample/20261118T103405Z-197ff68345e6/` | Deliverable, not an input | One JSON, three CSVs, `summary.txt`, two PNGs; 20 samples per ammeter, `errors: []` |
+| Committed evidence | `results/sample/20261118T154851Z-d4bad9fe25e4/` | Deliverable, not an input | One JSON with all ten artifact keys, three CSVs, `summary.txt`, two PNGs; 20 samples per ammeter, `errors: []`, `recovered: []` |
 
 The assertion policy is: injected `side_effect=[...]` gives known operands so the value is asserted **exactly**; a recording `side_effect` around the real generator gives exact draws so the **formula** is asserted exactly; `wraps=` supports call count/order, never the value; unmocked sockets are checked against their documented bounds only.
 
@@ -129,7 +129,7 @@ first, second = list_runs("results/runs")[-2:]
 deltas = compare_runs_by_id(first, second, "results/runs")
 ```
 
-Artifacts written before `effective_settings`, `environment` and `recovered` were added (including the committed sample) still load; all three keys are optional at schema version 1.
+The committed sample carries all three optional keys. Older artifacts that omit `effective_settings`, `environment` or `recovered` still load, because all three keys are optional at schema version 1.
 
 ### Visualization
 

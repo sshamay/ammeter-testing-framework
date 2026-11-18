@@ -246,6 +246,51 @@ class TestCleanExport(unittest.TestCase):
                 self.assertEqual(data["errors"], [])
 
 
+class TestFrozenMainScript(unittest.TestCase):
+    """The supplied main.py must return one reading from every configured ammeter."""
+
+    def test_main_returns_one_reading_per_ammeter(self):
+        # Run from a temp cwd with free ports so lingering daemon emulators from other tests
+        # cannot collide with the fixed ports in the frozen config.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ports = {name: free_port() for name in COMMANDS}
+            config = {
+                "ammeters": {
+                    name: {"port": port, "command": COMMANDS[name]}
+                    for name, port in ports.items()
+                }
+            }
+            config_dir = Path(temp_dir) / "config"
+            config_dir.mkdir()
+            (config_dir / "config.yaml").write_text(
+                yaml.safe_dump(config), encoding="utf-8"
+            )
+            env = dict(os.environ, PYTHONPATH=str(REPO_ROOT))
+            completed = subprocess.run(
+                [sys.executable, str(REPO_ROOT / "main.py")],
+                cwd=temp_dir,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr + completed.stdout)
+        self.assertEqual(completed.stderr, "")
+        self.assertEqual(
+            completed.stdout.count("Received current measurement from port"),
+            len(COMMANDS),
+        )
+        for name, port in ports.items():
+            with self.subTest(ammeter=name):
+                self.assertRegex(
+                    completed.stdout,
+                    rf"Received current measurement from port {port}: [-+0-9.eE]+ A",
+                )
+        self.assertNotIn("Error from port", completed.stdout)
+        self.assertNotIn("No data received", completed.stdout)
+
+
 class TestInterruptedRun(unittest.TestCase):
     """Ctrl-C stops the frozen main.py with a message instead of a traceback."""
 
