@@ -33,9 +33,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 FROZEN_CONFIG = str(REPO_ROOT / "config" / "config.yaml")
 
 
-def sample_result(errors=()):
+def sample_result(errors=(), recovered=()):
     return build_run_result(
-        {"greenlee": (1.0, 2.0, 3.0), "entes": (4.0, 5.0, 6.0)}, {}, errors
+        {"greenlee": (1.0, 2.0, 3.0), "entes": (4.0, 5.0, 6.0)},
+        {},
+        errors,
+        recovered=recovered,
     )
 
 
@@ -164,6 +167,21 @@ class TestTextTableWriter(unittest.TestCase):
             with self.subTest(expected=expected):
                 self.assertIn(expected, text)
 
+    def test_recovered_lines_are_separate_from_terminal_errors(self):
+        result = sample_result(
+            errors=["entes@fake:5002: connect failed"],
+            recovered=["greenlee@fake:5001: TransportError: transient"],
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            text = write_text_table(result, Path(temp_dir)).read_text(encoding="utf-8")
+
+        self.assertIn("Errors (1):\n  - entes@fake:5002: connect failed", text)
+        self.assertIn(
+            "Recovered (1):\n  - greenlee@fake:5001: TransportError: transient", text
+        )
+        self.assertLess(text.index("Errors (1)"), text.index("Recovered (1)"))
+        self.assertLess(text.index("Recovered (1)"), text.index(DISCLAIMER))
+
     def test_write_failure_becomes_storage_error(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             (Path(temp_dir) / "summary.txt").mkdir()
@@ -236,6 +254,15 @@ class TestVisualizeOrchestrator(unittest.TestCase):
                 artifacts = visualize(sample_result(), temp_dir)
             self.assertTrue(artifacts.skipped)
             self.assertIn("matplotlib not installed", artifacts.table_path.read_text(encoding="utf-8"))
+
+    def test_recovered_lines_reach_the_summary_file(self):
+        result = sample_result(recovered=["entes@fake:5002: TransportError: transient"])
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch("src.testing.visualization._load_pyplot", return_value=None):
+                artifacts = visualize(result, temp_dir)
+            text = artifacts.table_path.read_text(encoding="utf-8")
+        self.assertIn("Recovered (1):", text)
+        self.assertIn("entes@fake:5002: TransportError: transient", text)
 
 
 if __name__ == "__main__":

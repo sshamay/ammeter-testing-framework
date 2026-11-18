@@ -11,6 +11,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import yaml
 
@@ -19,9 +20,11 @@ from Ammeters.Entes_Ammeter import EntesAmmeter
 from Ammeters.Greenlee_Ammeter import GreenleeAmmeter
 
 from src.testing.adapters.fake import FakeAmmeterAdapter
+from src.testing.errors import TransportError, describe
 from src.testing.sampler import SamplingSettings
 from src.testing.storage import list_runs, load_run
 from src.testing.test_framework import AmmeterTestFramework
+from src.testing.visualization import visualize
 from tests.emulator_helpers import free_port, start_emulator, wait_until_listening
 from tests.support import (
     COMMANDS,
@@ -35,7 +38,7 @@ from tests.support import (
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ARTIFACT_KEYS = {
     "run_id", "created_utc", "config_snapshot", "statistics",
-    "samples", "errors", "schema_version", "effective_settings", "environment",
+    "samples", "errors", "recovered", "schema_version", "effective_settings", "environment",
 }
 STAT_KEYS = {"count", "mean", "median", "stddev", "min", "max", "cv", "drift"}
 
@@ -100,6 +103,7 @@ class TestArtifactShape(unittest.TestCase):
         self.assertEqual(set(data), ARTIFACT_KEYS)
         self.assertEqual(data["schema_version"], 1)
         self.assertEqual(data["errors"], [])
+        self.assertEqual(data["recovered"], [])
         self.assertEqual(set(data["statistics"]), set(NAMES))
         self.assertEqual(set(data["samples"]), set(NAMES))
         for name in NAMES:
@@ -107,6 +111,37 @@ class TestArtifactShape(unittest.TestCase):
                 self.assertEqual(set(data["statistics"][name]), STAT_KEYS)
                 self.assertEqual(data["samples"][name], list(GOOD[name]))
         self.assertEqual(data["config_snapshot"]["ammeters"]["greenlee"]["port"], 5001)
+
+
+class TestRecoveredEvidence(unittest.TestCase):
+    """A recovered fault must survive from sampling through the artifact to summary.txt."""
+
+    def test_transient_recovery_reaches_artifact_and_summary(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = write_config(temp_dir)
+            results_dir = str(Path(temp_dir) / "runs")
+            scripts = dict(GOOD)
+            scripts["entes"] = (
+                TransportError(describe("entes", 5002, "fake", "transient")),
+                5.0,
+                5.1,
+                4.9,
+            )
+            framework = build_framework(
+                config_path, results_dir, adapter_class=scripted_adapter_class(scripts)
+            )
+            result = framework.run_test()
+            with patch("src.testing.visualization._load_pyplot", return_value=None):
+                artifacts = visualize(result, results_dir)
+
+            data = load_run(result.run_id, results_dir)
+            self.assertEqual(data["errors"], [])
+            self.assertEqual(len(data["recovered"]), 1)
+            self.assertIn("entes@fake:5002: transient", data["recovered"][0])
+            self.assertEqual(result.samples["entes"], (5.0, 5.1, 4.9))
+            summary = artifacts.table_path.read_text(encoding="utf-8")
+            self.assertIn("Recovered (1):", summary)
+            self.assertIn(data["recovered"][0], summary)
 
 
 class TestBatchHygiene(unittest.TestCase):

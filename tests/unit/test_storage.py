@@ -121,6 +121,22 @@ class TestStorage(unittest.TestCase):
 
         self.assertEqual(load_run_result(result.run_id, self.results_dir), result)
 
+    def test_recovered_errors_survive_a_round_trip(self):
+        result = build_run_result(
+            {"greenlee": (1.0, 2.0)},
+            {},
+            recovered=["greenlee@fake:5001: TransportError: transient"],
+        )
+        save_run(result, self.results_dir)
+
+        data = load_run(result.run_id, self.results_dir)
+        self.assertEqual(
+            data["recovered"], ["greenlee@fake:5001: TransportError: transient"]
+        )
+        self.assertEqual(
+            load_run_result(result.run_id, self.results_dir).recovered, result.recovered
+        )
+
     def test_compare_runs_by_id_uses_archived_artifacts(self):
         stable = build_run_result({"greenlee": (1.0, 1.0, 1.0)}, {})
         varying = build_run_result({"greenlee": (1.0, 2.0, 3.0)}, {})
@@ -139,11 +155,13 @@ class TestStorage(unittest.TestCase):
         data = json.loads(path.read_text(encoding="utf-8"))
         data.pop("effective_settings")
         data.pop("environment")
+        data.pop("recovered")
         path.write_text(json.dumps(data), encoding="utf-8")
 
         loaded = load_run_result(result.run_id, self.results_dir)
         self.assertEqual(loaded.effective_settings, {})
         self.assertEqual(loaded.environment, {})
+        self.assertEqual(loaded.recovered, ())
         self.assertEqual(loaded.samples["greenlee"], (1.0, 2.0))
 
     def test_artifact_is_valid_json_with_sorted_keys(self):

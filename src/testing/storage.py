@@ -1,9 +1,9 @@
 """Archived run results with unique IDs and atomic writes.
 
 The JSON artifact is the framework's reporting evidence: it carries the config snapshot, the applied
-sampling/retry settings, the runtime environment, the stats, the raw samples and any errors. Writes
-go to a temp file in the same directory and are renamed into place, so a failure can never leave a
-half-written result.
+sampling/retry settings, the runtime environment, the stats, the raw samples, terminal errors and
+recovered transient faults. Writes go to a temp file in the same directory and are renamed into place,
+so a failure can never leave a half-written result.
 """
 
 import json
@@ -32,6 +32,7 @@ class RunResult:
     statistics: Mapping[str, Statistics]
     samples: Mapping[str, Tuple[float, ...]]
     errors: Tuple[str, ...] = ()
+    recovered: Tuple[str, ...] = ()
     schema_version: int = SCHEMA_VERSION
     effective_settings: Mapping[str, Any] = field(default_factory=dict)
     environment: Mapping[str, Any] = field(default_factory=dict)
@@ -61,6 +62,7 @@ def build_run_result(
     config_snapshot: Mapping[str, Any],
     errors: Iterable[str] = (),
     *,
+    recovered: Iterable[str] = (),
     effective_settings: Optional[Mapping[str, Any]] = None,
     environment: Optional[Mapping[str, Any]] = None,
 ) -> RunResult:
@@ -72,6 +74,7 @@ def build_run_result(
         statistics={name: compute_statistics(values) for name, values in samples.items()},
         samples=dict(samples),
         errors=tuple(errors),
+        recovered=tuple(recovered),
         effective_settings=dict(effective_settings or {}),
         environment=dict(
             environment if environment is not None else _default_environment()
@@ -136,6 +139,7 @@ def load_run_result(run_id: str, results_dir: str = DEFAULT_RESULTS_DIR) -> RunR
             },
             samples={name: tuple(values) for name, values in data["samples"].items()},
             errors=tuple(data.get("errors", ())),
+            recovered=tuple(data.get("recovered", ())),
             schema_version=data["schema_version"],
             effective_settings=data.get("effective_settings", {}),
             environment=data.get("environment", {}),
