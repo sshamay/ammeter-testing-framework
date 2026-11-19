@@ -147,7 +147,7 @@ Settings live under `analysis.visualization` in `src/testing/defaults.yaml` (`en
 
 ## Fixes and environment notes
 
-The bugs below were fixed during initial bring-up, before the supplied files were frozen. The remaining notes cover platform and version behaviour that is tested around rather than changed in those files.
+The bugs below were fixed during initial bring-up, before the supplied files were frozen.
 
 | # | Bug | Explanation of the fix |
 |---|---|---|
@@ -158,13 +158,3 @@ The bugs below were fixed during initial bring-up, before the supplied files wer
 | 5 | `load_config()` gave a raw traceback for a missing, empty or malformed config file. | It now raises a clear error for each case: `FileNotFoundError` with the path, `ValueError` with the YAML parsing problem, and `ValueError` when the file is empty or is not a mapping. A valid file still returns the parsed mapping. |
 | 6 | Ctrl-C ended the run with a raw `KeyboardInterrupt` traceback, which looks the same as a crash and gives no way to tell "stopped by the user" from "failed". | `main()` is now wrapped in a `KeyboardInterrupt` guard that prints `Stopped by user.` and exits with status 0. Covered by a test that sends a real `SIGINT` to a subprocess running `main.py` and checks the output contains no traceback. POSIX `SIGINT` is not a graceful interrupt for a Windows child process, so `tests/system/test_end_to_end.py` uses `CREATE_NEW_PROCESS_GROUP` + `CTRL_BREAK_EVENT` on Windows and `SIGINT` elsewhere. |
 | 7 | An integrated run took the first reading from each ammeter and then failed every subsequent one with `Broken pipe`. | The sampler held one connection open for the whole batch, but the frozen emulators answer exactly one request and then close. The sampler now opens a fresh connection for each reading and each retry, and always closes it in a `finally`. A one-shot connection double in the unit tests and the live-emulator adapter tests both pin this behaviour. |
-
-### Version and platform notes
-
-| Concern | Handling |
-|---|---|
-| `tarfile` extraction filter | `extractall(filter="data")` needs Python 3.12+ (or a backported patch release); `tests/system/test_end_to_end.py` validates archive members itself and uses plain `extractall`, so older interpreters work too. |
-| Timer resolution | Windows has a ~15.6 ms timer floor, so tight timing assertions would flake; unit tests inject a fake clock and the two live timing checks use loose tolerances. |
-| Paths and encodings | Separators and default encodings differ between platforms; framework paths use `pathlib`, text I/O passes `encoding="utf-8"` and CSV uses `newline=""`. |
-| Dependencies | PyYAML is the only required third-party package; matplotlib is imported behind a guard and skips cleanly. |
-| Python version | Newer built-in generic or union syntax would break older interpreters, so type hints use `typing.Tuple`/`Mapping` and the package imports on Python 3.10 through 3.14 (the dev interpreter is 3.14.6). |
